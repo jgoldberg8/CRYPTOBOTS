@@ -17,122 +17,119 @@ from model_utilities import AttentionModule
 
 class TimeToPeakPredictor(nn.Module):
     def __init__(self, input_size, hidden_size=256, num_layers=3, dropout_rate=0.5):
-        super().__init__()
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.hidden_size = hidden_size
-        self.dropout_rate = dropout_rate
-        self.num_layers = num_layers
+      super().__init__()
+      self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+      self.hidden_size = hidden_size
+      self.dropout_rate = dropout_rate
+      self.num_layers = num_layers
 
-        # 1. Temporal Embeddings
-        self.temporal_embedding = nn.Sequential(
-            nn.Linear(1, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout_rate)
-        )
+      # 1. Temporal Feature Processing
+      # Create CNN blocks and projections for 5s windows
+      self.conv_block_5s = nn.ModuleList()
+      self.projection_5s = nn.ModuleList()
+      conv_block_5s, projection_5s = self._create_conv_block(input_size, hidden_size)
+      self.conv_block_5s.append(conv_block_5s)
+      self.projection_5s.append(projection_5s)
 
-        # 2. CNN Blocks - Enhanced with residual connections
-        self.conv_block_5s = self._create_conv_block(input_size, hidden_size)
-        self.conv_block_10s = self._create_conv_block(input_size, hidden_size)
-        
-        # 3. GRU Layers - Better for variable sequences than LSTM
-        gru_args = {
-            'input_size': hidden_size,
-            'hidden_size': hidden_size//2,
-            'num_layers': num_layers,
-            'batch_first': True,
-            'bidirectional': True,
-            'dropout': dropout_rate if num_layers > 1 else 0
-        }
-        
-        # Create GRU layers for different time windows
-        self.conv_block_5s = nn.ModuleList()
-        self.projection_5s = nn.ModuleList()
-        conv_block, projection = self._create_conv_block(input_size, hidden_size)
-        self.conv_block_5s.append(conv_block)
-        self.projection_5s.append(projection)
+      # Create CNN blocks and projections for 10s windows
+      self.conv_block_10s = nn.ModuleList()
+      self.projection_10s = nn.ModuleList()
+      conv_block_10s, projection_10s = self._create_conv_block(input_size, hidden_size)
+      self.conv_block_10s.append(conv_block_10s)
+      self.projection_10s.append(projection_10s)
 
-        self.conv_block_10s = nn.ModuleList()
-        self.projection_10s = nn.ModuleList()
-        conv_block, projection = self._create_conv_block(input_size, hidden_size)
-        self.conv_block_10s.append(conv_block)
-        self.projection_10s.append(projection)
+      # 2. Sequence Processing
+      # GRU for 5s windows
+      self.gru_5s = nn.GRU(
+          input_size=hidden_size,
+          hidden_size=hidden_size//2,
+          num_layers=num_layers,
+          batch_first=True,
+          bidirectional=True,
+          dropout=dropout_rate if num_layers > 1 else 0
+      )
 
-        self.gru_5s = nn.GRU(
-            input_size=hidden_size, 
-            hidden_size=hidden_size//2, 
-            num_layers=num_layers,
-            batch_first=True, 
-            bidirectional=True,
-            dropout=dropout_rate if num_layers > 1 else 0
-        )
-        
-        self.gru_10s = nn.GRU(
-            input_size=hidden_size, 
-            hidden_size=hidden_size//2, 
-            num_layers=num_layers,
-            batch_first=True, 
-            bidirectional=True,
-            dropout=dropout_rate if num_layers > 1 else 0
-        )
-        
-        # GRUs for longer sequences (directly from input)
-        gru_args_long = dict(gru_args, input_size=input_size)
-        self.gru_20s = nn.GRU(**gru_args_long)
-        self.gru_30s = nn.GRU(**gru_args_long)
+      # GRU for 10s windows
+      self.gru_10s = nn.GRU(
+          input_size=hidden_size,
+          hidden_size=hidden_size//2,
+          num_layers=num_layers,
+          batch_first=True,
+          bidirectional=True,
+          dropout=dropout_rate if num_layers > 1 else 0
+      )
 
-        # 4. Multi-head Self-attention Module
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=hidden_size,
-            num_heads=8,
-            dropout=dropout_rate,
-            batch_first=True
-        )
-        
-        # 5. Advanced Quality Gate with Squeeze-Excitation
-        self.quality_gate = nn.Sequential(
-            nn.Linear(hidden_size + 2, hidden_size // 4),
-            nn.LayerNorm(hidden_size // 4),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 4, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.Sigmoid()
-        )
+      # GRUs for longer sequences (directly from input)
+      self.gru_20s = nn.GRU(
+          input_size=input_size,
+          hidden_size=hidden_size//2,
+          num_layers=num_layers,
+          batch_first=True,
+          bidirectional=True,
+          dropout=dropout_rate if num_layers > 1 else 0
+      )
 
-        # 6. Global Feature Processing
-        self.global_fc = nn.Sequential(
-            nn.Linear(4, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size)
-        )
+      self.gru_30s = nn.GRU(
+          input_size=input_size,
+          hidden_size=hidden_size//2,
+          num_layers=num_layers,
+          batch_first=True,
+          bidirectional=True,
+          dropout=dropout_rate if num_layers > 1 else 0
+      )
 
-        # 7. Feature Fusion Layer
-        self.fusion_layer = nn.Sequential(
-            nn.Linear(hidden_size * 5, hidden_size * 2),
-            nn.LayerNorm(hidden_size * 2),
-            nn.GELU(),
-            nn.Dropout(dropout_rate)
-        )
+      # 3. Attention Mechanism
+      self.self_attention = nn.MultiheadAttention(
+          embed_dim=hidden_size,
+          num_heads=8,
+          dropout=dropout_rate,
+          batch_first=True
+      )
 
-        # 8. Prediction Head with Uncertainty
-        self.prediction_head = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.LayerNorm(hidden_size // 2),
-            nn.GELU(),
-            nn.Linear(hidden_size // 2, 2)  # Output: [mean, log_variance]
-        )
+      # 4. Global Feature Processing
+      self.global_fc = nn.Sequential(
+          nn.Linear(5, hidden_size),
+          nn.LayerNorm(hidden_size),
+          nn.GELU(),
+          nn.Dropout(dropout_rate),
+          nn.Linear(hidden_size, hidden_size),
+          nn.LayerNorm(hidden_size)
+      )
 
-        # Initialize weights
-        self.apply(self._init_weights)
-        self.to(self.device)
+      # 5. Quality Gate
+      self.quality_gate = nn.Sequential(
+          nn.Linear(hidden_size + 2, hidden_size // 4),
+          nn.LayerNorm(hidden_size // 4),
+          nn.GELU(),
+          nn.Dropout(dropout_rate),
+          nn.Linear(hidden_size // 4, hidden_size),
+          nn.LayerNorm(hidden_size),
+          nn.Sigmoid()
+      )
+
+      # 6. Feature Fusion
+      self.fusion_layer = nn.Sequential(
+          nn.Linear(hidden_size * 5, hidden_size * 2),  # 5 concatenated features
+          nn.LayerNorm(hidden_size * 2),
+          nn.GELU(),
+          nn.Dropout(dropout_rate)
+      )
+
+      # 7. Prediction Head
+      self.prediction_head = nn.Sequential(
+          nn.Linear(hidden_size * 2, hidden_size),
+          nn.LayerNorm(hidden_size),
+          nn.GELU(),
+          nn.Dropout(dropout_rate),
+          nn.Linear(hidden_size, hidden_size // 2),
+          nn.LayerNorm(hidden_size // 2),
+          nn.GELU(),
+          nn.Linear(hidden_size // 2, 2)  # [mean, log_variance]
+      )
+
+      # Initialize weights
+      self.apply(self._init_weights)
+      self.to(self.device)
 
     def _create_conv_block(self, input_size, hidden_size):
         """Helper method to create a CNN block with residual connections"""
@@ -155,14 +152,14 @@ class TimeToPeakPredictor(nn.Module):
         return conv_block, projection
 
     def _init_weights(self, module):
-        """Initialize weights using Kaiming/Xavier initialization"""
-        if isinstance(module, (nn.Linear, nn.Conv1d)):
-            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, (nn.BatchNorm1d, nn.LayerNorm)):
-            nn.init.ones_(module.weight)
-            nn.init.zeros_(module.bias)
+      """Initialize weights using Kaiming initialization"""
+      if isinstance(module, (nn.Linear, nn.Conv1d)):
+          nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu') 
+          if module.bias is not None:
+              nn.init.zeros_(module.bias)
+      elif isinstance(module, (nn.BatchNorm1d, nn.LayerNorm)):
+          nn.init.ones_(module.weight)
+          nn.init.zeros_(module.bias)
 
 
 

@@ -14,7 +14,7 @@ from model_utilities import AttentionModule
 
 
 class PeakMarketCapPredictor(nn.Module):
-    def __init__(self, input_size, hidden_size=256, num_layers=3, dropout_rate=0.5):
+    def __init__(self, input_size, hidden_size=256, num_layers=4, dropout_rate=0.5):
         super().__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.hidden_size = hidden_size
@@ -67,7 +67,7 @@ class PeakMarketCapPredictor(nn.Module):
         self.attention_20s = AttentionModule(hidden_size)
         self.attention_30s = AttentionModule(hidden_size)
 
-        # Quality gate
+        # Quality gatetokenda
         self.quality_gate = nn.Sequential(
             nn.Linear(hidden_size + 2, hidden_size),
             nn.BatchNorm1d(hidden_size),
@@ -78,7 +78,7 @@ class PeakMarketCapPredictor(nn.Module):
         )
 
         # Global feature processing
-        self.global_fc = nn.Linear(4, hidden_size)
+        self.global_fc = nn.Linear(5, hidden_size)
 
         # Final layers
         self.fc1 = nn.Linear(hidden_size * 5, hidden_size)
