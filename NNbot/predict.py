@@ -128,7 +128,6 @@ def evaluate_model_single(model_path, data_path):
 
 
 def evaluate_model_both(peak_market_cap_model_path, time_to_peak_model_path, data_path):
-   
     # Load and preprocess data
     df = pd.read_csv(data_path)
     df = clean_dataset(df)
@@ -149,6 +148,8 @@ def evaluate_model_both(peak_market_cap_model_path, time_to_peak_model_path, dat
     # Load best saved models
     peak_market_cap_checkpoint = torch.load(peak_market_cap_model_path)
     time_to_peak_checkpoint = torch.load(time_to_peak_model_path)
+    
+    # Extract model state dictionaries from checkpoints
     peak_market_cap_model.load_state_dict(peak_market_cap_checkpoint['model_state_dict'])
     time_to_peak_model.load_state_dict(time_to_peak_checkpoint['model_state_dict'])
 
@@ -162,8 +163,7 @@ def evaluate_model_both(peak_market_cap_model_path, time_to_peak_model_path, dat
     time_to_peak_model = time_to_peak_model.to(device)
 
     # Collect predictions and true values
-    all_peak_market_cap_predictions = []
-    all_time_to_peak_predictions = []
+    all_predictions = []
     all_true_values = []
 
     # Disable gradient calculation
@@ -184,60 +184,59 @@ def evaluate_model_both(peak_market_cap_model_path, time_to_peak_model_path, dat
             peak_market_cap_prediction = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
             time_to_peak_prediction = time_to_peak_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
 
-            # Inverse transform the predictions and true values
-            peak_market_cap_pred_np = peak_market_cap_prediction.cpu().numpy()[0]
-            time_to_peak_pred_np = time_to_peak_prediction.cpu().numpy()[0]
-            true_np = sample['targets'].numpy()
+            # Combine predictions for inverse transform
+            combined_pred = np.column_stack([
+                peak_market_cap_prediction.cpu().numpy(),
+                time_to_peak_prediction.cpu().numpy()
+            ])
 
-            # Inverse transform using the scaler
-            peak_market_cap_pred_original = test_dataset.scaler.inverse_transform(
-                peak_market_cap_pred_np.reshape(1, -1)
-            )[0]
-            time_to_peak_pred_original = test_dataset.scaler.inverse_transform(
-                time_to_peak_pred_np.reshape(1, -1)
-            )[0]
-            true_original = test_dataset.scaler.inverse_transform(
-                true_np.reshape(1, -1)
-            )[0]
-
-            all_peak_market_cap_predictions.append(peak_market_cap_pred_original)
-            all_time_to_peak_predictions.append(time_to_peak_pred_original)
-            all_true_values.append(true_original)
+            # Store predictions and true values
+            all_predictions.append(combined_pred[0])
+            all_true_values.append(sample['targets'].numpy())
 
     # Convert to numpy arrays
-    peak_market_cap_predictions = np.array(all_peak_market_cap_predictions)
-    time_to_peak_predictions = np.array(all_time_to_peak_predictions)
+    predictions = np.array(all_predictions)
     true_values = np.array(all_true_values)
 
+    # Inverse transform all at once
+    predictions_original = test_dataset.scaler.inverse_transform(predictions)
+    true_values_original = test_dataset.scaler.inverse_transform(true_values)
+
+    # Split predictions back into individual components
+    peak_market_cap_predictions = predictions_original[:, 0]
+    time_to_peak_predictions = predictions_original[:, 1]
+    true_peak_market_cap = true_values_original[:, 0]
+    true_time_to_peak = true_values_original[:, 1]
+
     # Calculate performance metrics
-    peak_market_cap_mae = mean_absolute_error(true_values[:, 0], peak_market_cap_predictions)
-    time_to_peak_mae = mean_absolute_error(true_values[:, 1], time_to_peak_predictions)
+    peak_market_cap_mae = mean_absolute_error(true_peak_market_cap, peak_market_cap_predictions)
+    time_to_peak_mae = mean_absolute_error(true_time_to_peak, time_to_peak_predictions)
 
-    peak_market_cap_mse = mean_squared_error(true_values[:, 0], peak_market_cap_predictions)
-    time_to_peak_mse = mean_squared_error(true_values[:, 1], time_to_peak_predictions)
+    peak_market_cap_mse = mean_squared_error(true_peak_market_cap, peak_market_cap_predictions)
+    time_to_peak_mse = mean_squared_error(true_time_to_peak, time_to_peak_predictions)
 
-    peak_market_cap_r2 = r2_score(true_values[:, 0], peak_market_cap_predictions)
-    time_to_peak_r2 = r2_score(true_values[:, 1], time_to_peak_predictions)
+    peak_market_cap_r2 = r2_score(true_peak_market_cap, peak_market_cap_predictions)
+    time_to_peak_r2 = r2_score(true_time_to_peak, time_to_peak_predictions)
 
     # Visualize predictions vs true values
     plt.figure(figsize=(12, 5))
 
     # Peak Market Cap
     plt.subplot(1, 2, 1)
-    plt.scatter(true_values[:, 0], peak_market_cap_predictions, alpha=0.5)
-    plt.plot([true_values[:, 0].min(), true_values[:, 0].max()],
-            [true_values[:, 0].min(), true_values[:, 0].max()],
-            'r--', lw=2)
+    plt.scatter(true_peak_market_cap, peak_market_cap_predictions, alpha=0.5)
+    plt.plot([true_peak_market_cap.min(), true_peak_market_cap.max()],
+             [true_peak_market_cap.min(), true_peak_market_cap.max()],
+             'r--', lw=2)
     plt.title('Peak Market Cap: Predicted vs True')
     plt.xlabel('True Values')
     plt.ylabel('Predicted Values')
 
     # Time to Peak
     plt.subplot(1, 2, 2)
-    plt.scatter(true_values[:, 1], time_to_peak_predictions, alpha=0.5)
-    plt.plot([true_values[:, 1].min(), true_values[:, 1].max()],
-            [true_values[:, 1].min(), true_values[:, 1].max()],
-            'r--', lw=2)
+    plt.scatter(true_time_to_peak, time_to_peak_predictions, alpha=0.5)
+    plt.plot([true_time_to_peak.min(), true_time_to_peak.max()],
+             [true_time_to_peak.min(), true_time_to_peak.max()],
+             'r--', lw=2)
     plt.title('Time to Peak: Predicted vs True')
     plt.xlabel('True Values')
     plt.ylabel('Predicted Values')
@@ -256,6 +255,23 @@ def evaluate_model_both(peak_market_cap_model_path, time_to_peak_model_path, dat
     print(f"Mean Absolute Error: {time_to_peak_mae:.4f}")
     print(f"Mean Squared Error: {time_to_peak_mse:.4f}")
     print(f"R² Score: {time_to_peak_r2:.4f}")
+
+    return {
+        'peak_market_cap': {
+            'mae': peak_market_cap_mae,
+            'mse': peak_market_cap_mse,
+            'r2': peak_market_cap_r2,
+            'predictions': peak_market_cap_predictions,
+            'true_values': true_peak_market_cap
+        },
+        'time_to_peak': {
+            'mae': time_to_peak_mae,
+            'mse': time_to_peak_mse,
+            'r2': time_to_peak_r2,
+            'predictions': time_to_peak_predictions,
+            'true_values': true_time_to_peak
+        }
+    }
 
 
 
