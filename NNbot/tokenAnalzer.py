@@ -12,10 +12,23 @@ from collections import defaultdict
 class TokenDataCollector:
     def __init__(self, config):
         # Time windows for data collection (in seconds)
-        self.time_windows = sorted(list(set([
-            5, 10, 15, 20, 25, 30,  # 5-second intervals
-            10, 20, 30              # 10-second and additional intervals
-        ])))
+        self.time_windows = {
+            '5s': [
+                (0, 5),   # 0-5 seconds
+                (5, 10),  # 5-10 seconds
+                (10, 15), # 10-15 seconds
+                (15, 20), # 15-20 seconds
+                (20, 25), # 20-25 seconds
+                (25, 30)  # 25-30 seconds
+            ],
+            '10s': [
+                (0, 10),  # 0-10 seconds
+                (10, 20), # 10-20 seconds
+                (20, 30)  # 20-30 seconds
+            ],
+            '20s': [(0, 20)],  # First 20 seconds
+            '30s': [(0, 30)]   # First 30 seconds
+        }
         
         # Create log directory if it doesn't exist
         log_directory = config.get('log_directory', './data')
@@ -68,9 +81,11 @@ class TokenDataCollector:
         headers = ['mint', 'creation_time']
 
         # Add timeframe-based features
-        for window in self.time_windows:
-            for feature in base_features:
-                headers.append(f'{feature}_{window}s')
+        for interval_type, intervals in self.time_windows.items():
+            for i, (start, end) in enumerate(intervals):
+                interval_name = f"{start}to{end}"
+                for feature in base_features:
+                    headers.append(f'{feature}_{interval_name}s')
 
         # Add global features
         headers.extend([
@@ -81,6 +96,7 @@ class TokenDataCollector:
         ])
 
         return headers
+
 
     def _initialize_token_metrics(self, token_entry: dict) -> dict:
         """Initialize metrics structure for a token"""
@@ -104,20 +120,43 @@ class TokenDataCollector:
         }
         return metrics
 
-    def _calculate_timeframe_metrics(self, token: dict, window: int, current_time: datetime) -> dict:
+    def _calculate_timeframe_metrics(self, token: dict, start: int, end: int) -> dict:
         """Calculate metrics for a specific timeframe"""
-        if not token.get('first_trade_time'):
-            return {}
+        # Default metrics for empty windows
+        default_metrics = {
+            'transaction_count': 0,
+            'buy_pressure': 0,
+            'volume': 0,
+            'rsi': 50,  # Neutral RSI when no data
+            'price_volatility': 0,
+            'volume_volatility': 0,
+            'momentum': 0,
+            'trade_amount_variance': 0,
+            'transaction_rate': 0,
+            'trade_concentration': 0,
+            'unique_wallets': 0
+        }
 
+        if not token.get('first_trade_time'):
+            return default_metrics
+
+        # Ensure first_trade_time is a datetime object
         first_trade_time = token['first_trade_time']
-        window_start = max(first_trade_time, current_time - datetime.timedelta(seconds=window))
+        if isinstance(first_trade_time, str):
+            first_trade_time = datetime.fromisoformat(first_trade_time.replace('Z', '+00:00'))
         
-        # Filter transactions within window
+        # Calculate interval duration and times
+        interval_duration = end - start
+        interval_start = first_trade_time + timedelta(seconds=start)
+        interval_end = first_trade_time + timedelta(seconds=end)
+        
+        # Filter transactions within this specific interval
         window_txs = [tx for tx in token['transactions'] 
-                     if window_start <= tx['timestamp'] <= current_time]
+                    if isinstance(tx['timestamp'], datetime) and  # Ensure timestamp is datetime
+                    interval_start <= tx['timestamp'] <= interval_end]
 
         if not window_txs:
-            return {}
+            return default_metrics
 
         # Basic metrics
         tx_count = len(window_txs)
@@ -169,7 +208,7 @@ class TokenDataCollector:
             'volume_volatility': volume_volatility,
             'momentum': momentum,
             'trade_amount_variance': np.var(volumes) if volumes else 0,
-            'transaction_rate': tx_count / window,
+            'transaction_rate': tx_count / interval_duration if interval_duration > 0 else 0,
             'trade_concentration': trade_concentration,
             'unique_wallets': len(wallets)
         }
@@ -180,6 +219,9 @@ class TokenDataCollector:
             return
 
         current_time = datetime.now()
+        if isinstance(token['first_trade_time'], str):
+            token['first_trade_time'] = datetime.fromisoformat(token['first_trade_time'].replace('Z', '+00:00'))
+            
         time_since_first = (current_time - token['first_trade_time']).total_seconds()
 
         if time_since_first >= 180 and not token.get('recorded', False):
@@ -195,19 +237,21 @@ class TokenDataCollector:
                 'creation_time': token['creation_time'].isoformat()
             }
 
-            # Calculate metrics for each timeframe
-            for window in self.time_windows:
-                metrics = self._calculate_timeframe_metrics(token, window, current_time)
-                for feature, value in metrics.items():
-                    data[f'{feature}_{window}s'] = value
+            # Calculate metrics for each interval type and its intervals
+            for interval_type, intervals in self.time_windows.items():
+                for start, end in intervals:
+                    metrics = self._calculate_timeframe_metrics(token, start, end)
+                    interval_name = f"{start}to{end}"
+                    for feature, value in metrics.items():
+                        data[f'{feature}_{interval_name}s'] = value
 
-            # Add global metrics
+            # Add global metrics with defaults if missing
             data.update({
-                'initial_investment_ratio': token['initial_investment_ratio'],
-                'initial_market_cap': token['initial_market_cap'],
-                'peak_market_cap': token['peak_market_cap'],
+                'initial_investment_ratio': token.get('initial_investment_ratio', 1.0),
+                'initial_market_cap': token.get('initial_market_cap', 0),
+                'peak_market_cap': token.get('peak_market_cap', 0),
                 'time_to_peak': (token['peak_time'] - token['first_trade_time']).total_seconds()
-                    if token['peak_time'] else 0
+                    if token.get('peak_time') and token.get('first_trade_time') else 0
             })
 
             # Write to CSV
@@ -251,7 +295,6 @@ class TokenDataCollector:
             self.logger.error(f"Error in handle_token_creation: {e}")
 
     def handle_transaction(self, transaction: dict):
-        """Handle new transaction event"""
         try:
             mint = transaction['mint']
             token = self.token_data.get(mint)
@@ -264,19 +307,24 @@ class TokenDataCollector:
             if not token.get('first_trade_time'):
                 token['first_trade_time'] = current_time
                 token['initial_market_cap'] = transaction['marketCapSol']
-                token['initial_investment_ratio'] = 1.0  # Initial ratio is always 1.0
+                token['initial_investment_ratio'] = 1.0
+
+            # Store transaction with datetime object
+            token['transactions'].append({
+                'timestamp': current_time,  # Ensure this is a datetime object
+                **transaction
+            })
 
             # Update peak market cap (only within first 3 minutes)
-            time_since_first = (current_time - token['first_trade_time']).total_seconds()
+            first_trade_time = token['first_trade_time']
+            if isinstance(first_trade_time, str):
+                first_trade_time = datetime.fromisoformat(first_trade_time.replace('Z', '+00:00'))
+                token['first_trade_time'] = first_trade_time
+                
+            time_since_first = (current_time - first_trade_time).total_seconds()
             if time_since_first <= 180 and transaction['marketCapSol'] > token['peak_market_cap']:
                 token['peak_market_cap'] = transaction['marketCapSol']
                 token['peak_time'] = current_time
-
-            # Store transaction
-            token['transactions'].append({
-                'timestamp': current_time,
-                **transaction
-            })
 
             # Check if we should record the data
             self._check_record_completion(token)
@@ -308,7 +356,6 @@ class TokenDataCollector:
         except Exception as e:
             self.logger.error(f"Error processing message: {e}")
 
-    # WebSocket connection methods (same as before)
     def on_error(self, ws, error):
         self.logger.error(f"WebSocket error: {error}")
 
@@ -349,6 +396,8 @@ class TokenDataCollector:
             self.is_connecting = False
             time.sleep(5)
             threading.Thread(target=self.connect, daemon=True).start()
+        finally:
+            self.is_connecting = False
 
 def main():
     """Main function to run the token data collector"""
