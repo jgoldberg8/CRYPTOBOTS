@@ -1,0 +1,70 @@
+2025-01-07 06:58:08,451 - INFO: Token Classification Comparison Report
+2025-01-07 06:58:08,451 - INFO: ======================================
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: ys36kYoGmxZyk87BFAuYVZTAhDvDb3mjG8yz5hApump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 7aXf2ffE4iQygEVhSABMo4LdB8xzQ1aFePp17DTypump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 8detTDVdrQiWB1i9H2d8Ne2WFNTzw67RfE9h1qwCpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: CkhYkRZxippL4t5jA5fSsQxZRWafuVt35rWUMA8qpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 3sJdTcpNQrbqxoYLoWXGbEamXdu4uMxx5as5UZrppump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 2ia7eC71CeUY2LcYcN2j8a82pr6Qksm7eMzLYa9cpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: HrcLeuUGhuH1YXZdewyKtcqNsVxATFYdGkfR1BsDpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 6Xg7tvSYd3scBZ36oaG2DuBDWAx4VSLUYftVojJcpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 9mhXp4Q2LNVrGkMr4jhJ916xdwYNq4FTeVYk3yJMpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: CiCvFgTxUM7LEwPt3GW6K2whx2Cg5VvZ21aJ14m1pump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: 7oPzP9izTfT9gx28gXMzRwQAemyumrzLvUpZsUtzpump
+2025-01-07 06:58:08,451 - WARNING: No token analysis found for prediction: Bu1uJkT3oA3swUum2gvAgfrvBuHAsvNMdWyaWtZLpump
+2025-01-07 06:58:08,451 - INFO: 
+Overall Analysis:
+2025-01-07 06:58:08,451 - INFO: Total Tokens Analyzed: 140
+2025-01-07 06:58:08,451 - INFO: Correctly Classified Tokens: 116
+2025-01-07 06:58:08,451 - INFO: Overall Classification Accuracy: 82.86%
+2025-01-07 06:58:08,451 - INFO: 
+Classification Breakdown:
+2025-01-07 06:58:08,451 - INFO: 
+NEUTRAL Classification:
+2025-01-07 06:58:08,451 - INFO:   Total Tokens: 95
+2025-01-07 06:58:08,451 - INFO:   Correct Classifications: 94
+2025-01-07 06:58:08,451 - INFO:   Classification Accuracy: 98.95%
+2025-01-07 06:58:08,451 - INFO:   Average Time Since First Trade: 76.88
+2025-01-07 06:58:08,451 - INFO: 
+BAD Classification:
+2025-01-07 06:58:08,451 - INFO:   Total Tokens: 32
+2025-01-07 06:58:08,451 - INFO:   Correct Classifications: 17
+2025-01-07 06:58:08,451 - INFO:   Classification Accuracy: 53.12%
+2025-01-07 06:58:08,451 - INFO:   Average Time Since First Trade: 38.17
+2025-01-07 06:58:08,451 - INFO: 
+GOOD Classification:
+2025-01-07 06:58:08,451 - INFO:   Total Tokens: 13
+2025-01-07 06:58:08,451 - INFO:   Correct Classifications: 5
+2025-01-07 06:58:08,451 - INFO:   Classification Accuracy: 38.46%
+2025-01-07 06:58:08,451 - INFO:   Average Time Since First Trade: 24.77
+2025-01-07 06:58:08,451 - INFO: 
+Rug Time Prediction Analysis
+2025-01-07 06:58:08,451 - INFO: ===========================
+2025-01-07 06:58:08,451 - INFO: 
+Rug Time Prediction Metrics:
+2025-01-07 06:58:08,451 - INFO: Total Predictions Analyzed: 2
+2025-01-07 06:58:08,451 - INFO: Mean Squared Error: 17291.72
+2025-01-07 06:58:08,451 - INFO: Root Mean Squared Error: 131.50
+2025-01-07 06:58:08,451 - INFO: Mean Absolute Error: 127.29
+2025-01-07 06:58:08,451 - INFO: R² Score: -14.8641
+2025-01-07 06:58:08,468 - INFO: 
+Error Statistics:
+2025-01-07 06:58:08,468 - INFO: Mean Error: 127.29 seconds
+2025-01-07 06:58:08,468 - INFO: Median Error: 127.29 seconds
+2025-01-07 06:58:08,468 - INFO: Standard Deviation of Error: 33.01 seconds
+2025-01-07 06:58:08,468 - INFO: 
+Worst Predictions (Top 10):
+2025-01-07 06:58:08,468 - INFO: Mint: 64ZiQ5KwpkW9vwPvK6wQh5HGRtRaGqEKN3rnj85hpump
+2025-01-07 06:58:08,468 - INFO: Coin Name: 
+2025-01-07 06:58:08,468 - INFO: Predicted Time: 0.00 seconds
+2025-01-07 06:58:08,468 - INFO: Actual Time: 160.30 seconds
+2025-01-07 06:58:08,468 - INFO: Absolute Error: 160.30 seconds
+2025-01-07 06:58:08,468 - INFO: Error Percentage: 100.00%
+2025-01-07 06:58:08,468 - INFO: ---
+2025-01-07 06:58:08,468 - INFO: Mint: 9PJCfBLURPBnQBrgbxDjnLsr4aV8Z2TyputVvNWHpump
+2025-01-07 06:58:08,468 - INFO: Coin Name: ERDEV AI
+2025-01-07 06:58:08,468 - INFO: Predicted Time: 0.00 seconds
+2025-01-07 06:58:08,468 - INFO: Actual Time: 94.27 seconds
+2025-01-07 06:58:08,468 - INFO: Absolute Error: 94.27 seconds
+2025-01-07 06:58:08,468 - INFO: Error Percentage: 100.00%
+2025-01-07 06:58:08,468 - INFO: ---
