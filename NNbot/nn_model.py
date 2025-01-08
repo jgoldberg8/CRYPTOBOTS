@@ -129,16 +129,16 @@ class TokenDataset(Dataset):
         x_10s = torch.FloatTensor(self.scaled_data['data']['10s'][idx])
         x_20s = torch.FloatTensor(self.scaled_data['data']['20s'][idx])
         x_30s = torch.FloatTensor(self.scaled_data['data']['30s'][idx])
-        
+
         # Get global features
         global_features = torch.FloatTensor(self.scaled_data['global'][idx])
-        
+
         # Get quality features
         quality_features = torch.FloatTensor(self.quality_features[idx])
-        
+
         # Get targets
         targets = torch.FloatTensor(self.scaled_data['targets'][idx])
-        
+
         return {
             'x_5s': x_5s,
             'x_10s': x_10s,
@@ -148,6 +148,8 @@ class TokenDataset(Dataset):
             'quality_features': quality_features,
             'targets': targets
         }
+    
+        
 
 class AttentionModule(nn.Module):
     def __init__(self, hidden_size):
@@ -191,10 +193,7 @@ class EarlyStopping:
             
         return False    
     
-
-
-
-class TokenPredictor(nn.Module):
+class PeakMarketCapPredictor(nn.Module):
     def __init__(self, input_size, hidden_size=256, num_layers=3, dropout_rate=0.5):
         super().__init__()
         self.hidden_size = hidden_size
@@ -225,7 +224,7 @@ class TokenPredictor(nn.Module):
             nn.Dropout(self.dropout_rate),
             nn.MaxPool1d(2)
         )
-        
+
         # Bidirectional LSTM layers
         self.lstm_5s = nn.LSTM(hidden_size, hidden_size//2, num_layers,
                               batch_first=True, bidirectional=True,
@@ -239,16 +238,13 @@ class TokenPredictor(nn.Module):
         self.lstm_30s = nn.LSTM(input_size, hidden_size//2, num_layers,
                                batch_first=True, bidirectional=True,
                                dropout=self.dropout_rate if num_layers > 1 else 0)
-        
-        # Layer normalization
-        self.layer_norm = nn.LayerNorm(hidden_size)
-        
+
         # Attention modules
         self.attention_5s = AttentionModule(hidden_size)
         self.attention_10s = AttentionModule(hidden_size)
         self.attention_20s = AttentionModule(hidden_size)
         self.attention_30s = AttentionModule(hidden_size)
-        
+
         # Quality gate
         self.quality_gate = nn.Sequential(
             nn.Linear(hidden_size + 2, hidden_size),
@@ -258,18 +254,17 @@ class TokenPredictor(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Sigmoid()
         )
-        
+
         # Global feature processing
         self.global_fc = nn.Linear(2, hidden_size)
 
         # Final layers
         self.fc1 = nn.Linear(hidden_size * 5, hidden_size)
         self.dropout = nn.Dropout(0.4)
-        self.fc2 = nn.Linear(hidden_size, 2)
+        self.fc2 = nn.Linear(hidden_size, 1)  # Output a single value for peak market cap
 
         # Initialize weights
         self._initialize_weights()
-
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -284,152 +279,311 @@ class TokenPredictor(nn.Module):
                 nn.init.xavier_normal_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-                    
-                        
-        
-    def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
-      batch_size = x_5s.size(0)
-      
-      # Process 5-second windows
-      x_5s = self.conv_5s(x_5s.transpose(1, 2))
-      x_5s = x_5s.transpose(1, 2)
-      x_5s, _ = self.lstm_5s(x_5s)
-      x_5s = self.attention_5s(x_5s)
-      
-      # Process 10-second windows
-      x_10s = self.conv_10s(x_10s.transpose(1, 2))
-      x_10s = x_10s.transpose(1, 2)
-      x_10s, _ = self.lstm_10s(x_10s)
-      x_10s = self.attention_10s(x_10s)
-      
-      # Process 20-second windows
-      x_20s, _ = self.lstm_20s(x_20s)
-      x_20s = self.attention_20s(x_20s)
-      
-      # Process 30-second windows
-      x_30s, _ = self.lstm_30s(x_30s)
-      x_30s = self.attention_30s(x_30s)
-      
-      # Process global features
-      global_features = self.global_fc(global_features)
-      
-      # Combine temporal features
-      temporal_features = torch.stack([x_5s, x_10s, x_20s, x_30s], dim=1)
-      temporal_mean = torch.mean(temporal_features, dim=1)
-      
-      # Quality-aware attention
-      quality_context = torch.cat([temporal_mean, quality_features], dim=1)
-      quality_weights = self.quality_gate(quality_context)
-      
-      # Apply quality weights and combine features
-      weighted_features = [
-          x_5s * quality_weights,
-          x_10s * quality_weights,
-          x_20s * quality_weights,
-          x_30s * quality_weights,
-          global_features
-      ]
-      combined = torch.cat(weighted_features, dim=1)
-      
-      # Final prediction
-      x = self.fc1(combined)
-      x = torch.relu(x)
-      x = self.dropout(x)
-      x = self.fc2(x)
-      
-      return x
 
-def train_model(model, train_loader, val_loader, num_epochs=200, learning_rate=0.001, weight_decay=0.01, patience=15, min_delta=0.001):
+    def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
+        # Process 5-second windows
+        x_5s = self.conv_5s(x_5s.transpose(1, 2))
+        x_5s = x_5s.transpose(1, 2)
+        x_5s, _ = self.lstm_5s(x_5s)
+        x_5s = self.attention_5s(x_5s)
+        
+        # Process 10-second windows
+        x_10s = self.conv_10s(x_10s.transpose(1, 2))
+        x_10s = x_10s.transpose(1, 2)
+        x_10s, _ = self.lstm_10s(x_10s)
+        x_10s = self.attention_10s(x_10s)
+        
+        # Process 20-second windows
+        x_20s, _ = self.lstm_20s(x_20s)
+        x_20s = self.attention_20s(x_20s)
+        
+        # Process 30-second windows
+        x_30s, _ = self.lstm_30s(x_30s)
+        x_30s = self.attention_30s(x_30s)
+        
+        # Process global features
+        global_features = self.global_fc(global_features)
+        
+        # Combine temporal features
+        temporal_features = torch.stack([x_5s, x_10s, x_20s, x_30s], dim=1)
+        temporal_mean = torch.mean(temporal_features, dim=1)
+        
+        # Quality-aware attention
+        quality_context = torch.cat([temporal_mean, quality_features], dim=1)
+        quality_weights = self.quality_gate(quality_context)
+        
+        # Apply quality weights and combine features
+        weighted_features = [
+            x_5s * quality_weights,
+            x_10s * quality_weights,
+            x_20s * quality_weights,
+            x_30s * quality_weights,
+            global_features
+        ]
+        combined = torch.cat(weighted_features, dim=1)
+        
+        # Final prediction for peak market cap
+        peak_market_cap = self.fc1(combined)
+        peak_market_cap = torch.relu(peak_market_cap)
+        peak_market_cap = self.dropout(peak_market_cap)
+        peak_market_cap = self.fc2(peak_market_cap)
+        
+        return peak_market_cap
+
+
+
+
+
+
+
+class TimeToPeakPredictor(nn.Module):
+    def __init__(self, input_size, hidden_size=256, num_layers=3, dropout_rate=0.5):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.dropout_rate = dropout_rate
+
+        # Enhanced CNN layers
+        self.conv_5s = nn.Sequential(
+            nn.Conv1d(input_size, hidden_size, kernel_size=2, padding=1),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=2, padding=1),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            nn.MaxPool1d(2)
+        )
+
+
+        self.conv_10s = nn.Sequential(
+            nn.Conv1d(input_size, hidden_size, kernel_size=2, padding=1),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            nn.Conv1d(hidden_size, hidden_size, kernel_size=2, padding=1),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            nn.MaxPool1d(2)
+        )
+
+
+        # Bidirectional LSTM layers
+        self.lstm_5s = nn.LSTM(hidden_size, hidden_size//2, num_layers,
+                              batch_first=True, bidirectional=True,
+                              dropout=self.dropout_rate if num_layers > 1 else 0)
+        self.lstm_10s = nn.LSTM(hidden_size, hidden_size//2, num_layers,
+                               batch_first=True, bidirectional=True,
+                               dropout=self.dropout_rate if num_layers > 1 else 0)
+        self.lstm_20s = nn.LSTM(input_size, hidden_size//2, num_layers,
+                               batch_first=True, bidirectional=True,
+                               dropout=self.dropout_rate if num_layers > 1 else 0)
+        self.lstm_30s = nn.LSTM(input_size, hidden_size//2, num_layers,
+                               batch_first=True, bidirectional=True,
+                               dropout=self.dropout_rate if num_layers > 1 else 0)
+
+        # Attention modules
+        self.attention_5s = AttentionModule(hidden_size)
+        self.attention_10s = AttentionModule(hidden_size)
+        self.attention_20s = AttentionModule(hidden_size)
+        self.attention_30s = AttentionModule(hidden_size)
+
+        # Quality gate
+        self.quality_gate = nn.Sequential(
+            nn.Linear(hidden_size + 2, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Sigmoid()
+        )
+
+        # Global feature processing
+        self.global_fc = nn.Linear(2, hidden_size)
+
+        # Final layers
+        self.fc1 = nn.Linear(hidden_size * 5, hidden_size)
+        self.dropout = nn.Dropout(0.4)
+        self.fc2 = nn.Linear(hidden_size, 1)  # Output a single value for time to peak
+
+        # Initialize weights
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+
+
+    def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
+        batch_size = x_5s.size(0)
+      
+        # Process 5-second windows
+        x_5s = self.conv_5s(x_5s.transpose(1, 2))
+        x_5s = x_5s.transpose(1, 2)
+        x_5s, _ = self.lstm_5s(x_5s)
+        x_5s = self.attention_5s(x_5s)
+        
+        # Process 10-second windows
+        x_10s = self.conv_10s(x_10s.transpose(1, 2))
+        x_10s = x_10s.transpose(1, 2)
+        x_10s, _ = self.lstm_10s(x_10s)
+        x_10s = self.attention_10s(x_10s)
+        
+        # Process 20-second windows
+        x_20s, _ = self.lstm_20s(x_20s)
+        x_20s = self.attention_20s(x_20s)
+        
+        # Process 30-second windows
+        x_30s, _ = self.lstm_30s(x_30s)
+        x_30s = self.attention_30s(x_30s)
+
+        # Process global features
+        global_features = self.global_fc(global_features)
+        
+        # Combine temporal features
+        temporal_features = torch.stack([x_5s, x_10s, x_20s, x_30s], dim=1)
+        temporal_mean = torch.mean(temporal_features, dim=1)
+        
+        # Quality-aware attention
+        quality_context = torch.cat([temporal_mean, quality_features], dim=1)
+        quality_weights = self.quality_gate(quality_context)
+        
+        # Apply quality weights and combine features
+        weighted_features = [
+            x_5s * quality_weights,
+            x_10s * quality_weights,
+            x_20s * quality_weights,
+            x_30s * quality_weights,
+            global_features
+        ]
+        combined = torch.cat(weighted_features, dim=1)
+        
+        # Final prediction for time to peak
+        time_to_peak = self.fc1(combined)
+        time_to_peak = torch.relu(time_to_peak)
+        time_to_peak = self.dropout(time_to_peak)
+        time_to_peak = self.fc2(time_to_peak)
+        
+        return time_to_peak
+    
+
+
+def train_model(peak_market_cap_model, time_to_peak_model, train_loader, val_loader, num_epochs=200, learning_rate=0.001, weight_decay=0.01, patience=15, min_delta=0.001):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
+    peak_market_cap_model = peak_market_cap_model.to(device)
+    time_to_peak_model = time_to_peak_model.to(device)
 
     # Combined loss function
-    criterion = nn.MSELoss()
+    peak_market_cap_criterion = nn.MSELoss()
+    time_to_peak_criterion = nn.MSELoss()
 
-    # AdamW optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # AdamW optimizer for both models
+    peak_market_cap_optimizer = optim.AdamW(peak_market_cap_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    time_to_peak_optimizer = optim.AdamW(time_to_peak_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    # Cosine annealing scheduler
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=20, T_mult=2, eta_min=1e-6
-    )
+    # Cosine annealing scheduler for both models
+    peak_market_cap_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(peak_market_cap_optimizer, T_0=20, T_mult=2, eta_min=1e-6)
+    time_to_peak_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(time_to_peak_optimizer, T_0=20, T_mult=2, eta_min=1e-6)
 
-    # Early stopping
-    early_stopping = EarlyStopping(patience=patience, min_delta=min_delta)
+    # Early stopping for both models
+    peak_market_cap_early_stopping = EarlyStopping(patience=patience, min_delta=min_delta)
+    time_to_peak_early_stopping = EarlyStopping(patience=patience, min_delta=min_delta)
 
-    best_val_loss = float('inf')
+    best_peak_market_cap_val_loss = float('inf')
+    best_time_to_peak_val_loss = float('inf')
+
     for epoch in range(num_epochs):
-        # Training phase
-        model.train()
-        train_loss = 0
+        # Training phase for peak market cap model
+        peak_market_cap_model.train()
+        peak_market_cap_train_loss = 0
         for batch_idx, batch in enumerate(train_loader):
-            # Move data to device
-            x_5s = batch['x_5s'].to(device)
-            x_10s = batch['x_10s'].to(device)
-            x_20s = batch['x_20s'].to(device)
-            x_30s = batch['x_30s'].to(device)
-            global_features = batch['global_features'].to(device)
-            quality_features = batch['quality_features'].to(device)
-            targets = batch['targets'].to(device)
-
-            optimizer.zero_grad()
-
-            # Forward pass with mixed precision
+            peak_market_cap_optimizer.zero_grad()
             with torch.cuda.amp.autocast():
-                output = model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
-                loss = criterion(output, targets)
+                peak_market_cap_output = peak_market_cap_model(batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'], batch['global_features'], batch['quality_features'])
+                peak_market_cap_loss = peak_market_cap_criterion(peak_market_cap_output, batch['targets'][:, 0].unsqueeze(1))
+            peak_market_cap_loss.backward()
+            torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
+            peak_market_cap_optimizer.step()
+            peak_market_cap_train_loss += peak_market_cap_loss.item()
+        peak_market_cap_train_loss /= len(train_loader)
 
-            # Backward pass
-            loss.backward()
-
-            # Gradient clipping
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-            optimizer.step()
-            train_loss += loss.item()
-
-        train_loss /= len(train_loader)
-
-        # Validation phase
-        model.eval()
-        val_loss = 0
+        # Validation phase for peak market cap model
+        peak_market_cap_model.eval()
+        peak_market_cap_val_loss = 0
         with torch.no_grad():
             for batch in val_loader:
-                x_5s = batch['x_5s'].to(device)
-                x_10s = batch['x_10s'].to(device)
-                x_20s = batch['x_20s'].to(device)
-                x_30s = batch['x_30s'].to(device)
-                global_features = batch['global_features'].to(device)
-                quality_features = batch['quality_features'].to(device)
-                targets = batch['targets'].to(device)
+                peak_market_cap_output = peak_market_cap_model(batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'], batch['global_features'], batch['quality_features'])
+                peak_market_cap_loss = peak_market_cap_criterion(peak_market_cap_output, batch['targets'][:, 0].unsqueeze(1))
+                peak_market_cap_val_loss += peak_market_cap_loss.item()
+        peak_market_cap_val_loss /= len(val_loader)
 
-                output = model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
-                loss = criterion(output, targets)
-                val_loss += loss.item()
+        # Training phase for time to peak model
+        time_to_peak_model.train()
+        time_to_peak_train_loss = 0
+        for batch_idx, batch in enumerate(train_loader):
+            time_to_peak_optimizer.zero_grad()
+            with torch.cuda.amp.autocast():
+                time_to_peak_output = time_to_peak_model(batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'], batch['global_features'], batch['quality_features'])
+                time_to_peak_loss = time_to_peak_criterion(time_to_peak_output, batch['targets'][:, 1].unsqueeze(1))
+            time_to_peak_loss.backward()
+            torch.nn.utils.clip_grad_norm_(time_to_peak_model.parameters(), max_norm=1.0)
+            time_to_peak_optimizer.step()
+            time_to_peak_train_loss += time_to_peak_loss.item()
+        time_to_peak_train_loss /= len(train_loader)
 
-        val_loss /= len(val_loader)
+        # Validation phase for time to peak model
+        time_to_peak_model.eval()
+        time_to_peak_val_loss = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                time_to_peak_output = time_to_peak_model(batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'], batch['global_features'], batch['quality_features'])
+                time_to_peak_loss = time_to_peak_criterion(time_to_peak_output, batch['targets'][:, 1].unsqueeze(1))
+                time_to_peak_val_loss += time_to_peak_loss.item()
+        time_to_peak_val_loss /= len(val_loader)
 
-        # Update learning rate
-        scheduler.step()
+        # Update learning rates
+        peak_market_cap_scheduler.step()
+        time_to_peak_scheduler.step()
 
-        print(f'Epoch {epoch+1}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}, LR = {scheduler.get_last_lr()[0]:.6f}')
+        print(f'Epoch {epoch+1}: Peak Market Cap Train Loss = {peak_market_cap_train_loss:.4f}, Peak Market Cap Val Loss = {peak_market_cap_val_loss:.4f}, LR = {peak_market_cap_scheduler.get_last_lr()[0]:.6f}')
+        print(f'Epoch {epoch+1}: Time to Peak Train Loss = {time_to_peak_train_loss:.4f}, Time to Peak Val Loss = {time_to_peak_val_loss:.4f}, LR = {time_to_peak_scheduler.get_last_lr()[0]:.6f}')
 
-        # Save best model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        # Save best models
+        if peak_market_cap_val_loss < best_peak_market_cap_val_loss:
+            best_peak_market_cap_val_loss = peak_market_cap_val_loss
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'best_val_loss': best_val_loss,
-            }, 'best_model.pth')
+                'model_state_dict': peak_market_cap_model.state_dict(),
+                'optimizer_state_dict': peak_market_cap_optimizer.state_dict(),
+                'best_val_loss': best_peak_market_cap_val_loss,
+            }, 'best_peak_market_cap_model.pth')
+
+        if time_to_peak_val_loss < best_time_to_peak_val_loss:
+            best_time_to_peak_val_loss = time_to_peak_val_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': time_to_peak_model.state_dict(),
+                'optimizer_state_dict': time_to_peak_optimizer.state_dict(),
+                'best_val_loss': best_time_to_peak_val_loss,
+            }, 'best_time_to_peak_model.pth')
 
         # Early stopping
-        if early_stopping(val_loss):
+        if peak_market_cap_early_stopping(peak_market_cap_val_loss) or time_to_peak_early_stopping(time_to_peak_val_loss):
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break
-
-
+        
 
 def clean_dataset(df):
     # Drop records where no peak was recorded (time_to_peak is 0)
@@ -474,63 +628,19 @@ def add_data_quality_features(df):
 
 
 
-def find_lr(model, train_loader, init_value=1e-8, final_value=10., beta=0.98):
-    num = len(train_loader)-1
-    mult = (final_value / init_value) ** (1/num)
-    lr = init_value
-    optimizer = optim.Adam(model.parameters(), lr=init_value)
-    avg_loss = 0.
-    best_loss = 0.
-    batch_num = 0
-    losses = []
-    log_lrs = []
-    
-    model.train()
-    for batch_idx, batch in enumerate(train_loader):
-        batch_num += 1
-        optimizer.param_groups[0]['lr'] = lr
-        
-        optimizer.zero_grad()
-        
-        x_5s = batch['x_5s']
-        x_10s = batch['x_10s']
-        x_20s = batch['x_20s']
-        x_30s = batch['x_30s']
-        global_features = batch['global_features']
-        quality_features = batch['quality_features']
-        targets = batch['targets']
-        
-        output = model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
-        loss = F.mse_loss(output, targets)
-        
-        # Compute the smoothed loss
-        avg_loss = beta * avg_loss + (1-beta) * loss.item()
-        smoothed_loss = avg_loss / (1 - beta**batch_num)
-        
-        # Record the best loss
-        if batch_num == 1 or smoothed_loss < best_loss:
-            best_loss = smoothed_loss
-            
-        # Store the values
-        losses.append(smoothed_loss)
-        log_lrs.append(math.log10(lr))
-        
-        loss.backward()
-        optimizer.step()
-        
-        lr *= mult
-        if batch_num > 100:
-            break
-            
-    return log_lrs, losses
-
-
-
 def main():
-    # Load and preprocess data
-    df = pd.read_csv('data/token_data_2025-01-07.csv')
-    df = clean_dataset(df)
-    df = add_data_quality_features(df)
+    # Load and preprocess data for 2025-01-07
+    df_07 = pd.read_csv('data/token_data_2025-01-07.csv')
+    df_07 = clean_dataset(df_07)
+    df_07 = add_data_quality_features(df_07)
+
+    # Load and preprocess data for 2025-01-08
+    df_08 = pd.read_csv('data/token_data_2025-01-08.csv')
+    df_08 = clean_dataset(df_08)
+    df_08 = add_data_quality_features(df_08)
+
+    # Concatenate the DataFrames
+    df = pd.concat([df_07, df_08], ignore_index=True)
 
     # Split data
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
@@ -543,12 +653,13 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=64)
 
-    # Initialize model
+    # Initialize models
     input_size = 11
-    model = TokenPredictor(input_size, hidden_size=256, num_layers=3, dropout_rate=0.5)
+    peak_market_cap_model = PeakMarketCapPredictor(input_size, hidden_size=256, num_layers=3, dropout_rate=0.5)
+    time_to_peak_model = TimeToPeakPredictor(input_size, hidden_size=256, num_layers=3, dropout_rate=0.5)
 
-    # Train model
-    train_model(model, train_loader, val_loader)
+    # Train models
+    train_model(peak_market_cap_model, time_to_peak_model, train_loader, val_loader)
 
 
 if __name__ == "__main__":
