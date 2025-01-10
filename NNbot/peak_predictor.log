@@ -1,0 +1,46 @@
+2025-01-09 21:46:28,207 - ERROR - Detailed error: Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\newAdvancedModel.py", line 265, in main
+    training_data = pd.read_csv('historical_token_data.csv')  # Adjust path as needed
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\pandas\io\parsers\readers.py", line 912, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\pandas\io\parsers\readers.py", line 577, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\pandas\io\parsers\readers.py", line 1407, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\pandas\io\parsers\readers.py", line 1661, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\pandas\io\common.py", line 859, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'historical_token_data.csv'
+
+2025-01-09 21:47:00,276 - INFO - Starting model training...
+2025-01-09 21:47:01,107 - ERROR - Error during training: setting an array element with a sequence.
+2025-01-09 21:47:01,116 - ERROR - Detailed error: TypeError: only size-1 arrays can be converted to Python scalars
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\newAdvancedModel.py", line 274, in main
+    predictor.train(training_data)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\newAdvancedModel.py", line 136, in train
+    X_scaled = self.scaler.fit_transform(X)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\utils\_set_output.py", line 316, in wrapped
+    data_to_wrap = f(self, X, *args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\base.py", line 1098, in fit_transform
+    return self.fit(X, **fit_params).transform(X)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\preprocessing\_data.py", line 878, in fit
+    return self.partial_fit(X, y, sample_weight)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\base.py", line 1473, in wrapper
+    return fit_method(estimator, *args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\preprocessing\_data.py", line 914, in partial_fit
+    X = self._validate_data(
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\base.py", line 633, in _validate_data
+    out = check_array(X, input_name="X", **check_params)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\utils\validation.py", line 1012, in check_array
+    array = _asarray_with_order(array, order=order, dtype=dtype, xp=xp)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\sklearn\utils\_array_api.py", line 745, in _asarray_with_order
+    array = numpy.asarray(array, order=order, dtype=dtype)
+ValueError: setting an array element with a sequence.
+
+2025-01-09 21:49:00,387 - INFO - Starting model training...
+2025-01-09 21:49:01,573 - INFO - Model training completed successfully

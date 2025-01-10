@@ -1,0 +1,60 @@
+Epoch 1/200 [Train]:   0%|                                                                                                                   | 0/16 [00:00<?, ?it/s]C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py:388: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\amp\autocast_mode.py:266: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+Epoch 1/200 [Train]:   0%|                                                                                                                   | 0/16 [00:00<?, ?it/s]
+2025-01-10 04:36:07,364 - ERROR - Error during training: 'MultiGranularAttention' object has no attribute 'feature_proj'
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 575, in main
+    model, training_stats, best_val_loss = train_model(
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 390, in train_model
+    mean, log_var = model(batch)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 254, in forward
+    processed = self.granularity_processors[granularity](features, lengths)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 139, in forward
+    att_out, _ = self.attention(conv_out)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 37, in forward
+    x = self.feature_proj(x)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1931, in __getattr__
+    raise AttributeError(
+AttributeError: 'MultiGranularAttention' object has no attribute 'feature_proj'
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 623, in <module>
+    results = main()
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 575, in main
+    model, training_stats, best_val_loss = train_model(
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 390, in train_model
+    mean, log_var = model(batch)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 254, in forward
+    processed = self.granularity_processors[granularity](features, lengths)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 139, in forward
+    att_out, _ = self.attention(conv_out)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 37, in forward
+    x = self.feature_proj(x)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1931, in __getattr__
+    raise AttributeError(
+AttributeError: 'MultiGranularAttention' object has no attribute 'feature_proj'

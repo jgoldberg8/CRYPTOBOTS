@@ -1,0 +1,31 @@
+{
+  "os": "Windows-10-10.0.22631-SP0",
+  "python": "CPython 3.10.11",
+  "startedAt": "2025-01-10T09:46:13.586089Z",
+  "program": "C:\\Users\\jegol\\CryptoProjects\\BOTGITREPO\\CRYPTOBOTS\\NNbot\\TimeToPeak\\models\\time_to_peak_model.py",
+  "codePath": "NNbot\\TimeToPeak\\models\\time_to_peak_model.py",
+  "git": {
+    "remote": "https://github.com/jgoldberg8/CRYPTOBOTS.git",
+    "commit": "005582daeb99b9022807af77ab7685f7b0598d3e"
+  },
+  "email": "jegoldberg8@gmail.com",
+  "root": "C:\\Users\\jegol\\CryptoProjects\\BOTGITREPO\\CRYPTOBOTS\\NNbot",
+  "host": "LAPTOP-5LPA8TNB",
+  "executable": "C:\\Users\\jegol\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\\python.exe",
+  "codePathLocal": "TimeToPeak\\models\\time_to_peak_model.py",
+  "cpu_count": 4,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "510854688768",
+      "used": "293586296832"
+    }
+  },
+  "memory": {
+    "total": "17014460416"
+  },
+  "cpu": {
+    "count": 4,
+    "countLogical": 8
+  }
+}

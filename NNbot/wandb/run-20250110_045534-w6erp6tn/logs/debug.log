@@ -1,0 +1,23 @@
+2025-01-10 04:55:34,678 INFO    MainThread:47316 [wandb_setup.py:_flush():68] Current SDK version is 0.19.2
+2025-01-10 04:55:34,678 INFO    MainThread:47316 [wandb_setup.py:_flush():68] Configure stats pid to 47316
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_setup.py:_flush():68] Loading settings from C:\Users\jegol\.config\wandb\settings
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_setup.py:_flush():68] Loading settings from C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\wandb\settings
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_init.py:_log_setup():523] Logging user logs to C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\wandb\run-20250110_045534-w6erp6tn\logs\debug.log
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_init.py:_log_setup():524] Logging internal logs to C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\wandb\run-20250110_045534-w6erp6tn\logs\debug-internal.log
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_init.py:init():641] calling init triggers
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_init.py:init():647] wandb.init called with sweep_config: {}
+config: {'learning_rate': 0.001, 'epochs': 200, 'batch_size': 32, 'weight_decay': 0.01, 'model_type': 'MultiGranularPeakPredictor', 'optimizer': 'AdamW', 'scheduler': 'OneCycleLR'}
+2025-01-10 04:55:34,679 INFO    MainThread:47316 [wandb_init.py:init():674] starting backend
+2025-01-10 04:55:34,922 INFO    MainThread:47316 [wandb_init.py:init():678] sending inform_init request
+2025-01-10 04:55:34,954 INFO    MainThread:47316 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=spawn, using: spawn
+2025-01-10 04:55:34,955 INFO    MainThread:47316 [wandb_init.py:init():693] backend started and connected
+2025-01-10 04:55:34,956 INFO    MainThread:47316 [wandb_init.py:init():786] updated telemetry
+2025-01-10 04:55:35,252 INFO    MainThread:47316 [wandb_init.py:init():818] communicating run to backend with 90.0 second timeout
+2025-01-10 04:55:35,476 INFO    MainThread:47316 [wandb_init.py:init():868] starting run threads in backend
+2025-01-10 04:55:35,878 INFO    MainThread:47316 [wandb_run.py:_console_start():2415] atexit reg
+2025-01-10 04:55:35,878 INFO    MainThread:47316 [wandb_run.py:_redirect():2265] redirect: wrap_raw
+2025-01-10 04:55:35,878 INFO    MainThread:47316 [wandb_run.py:_redirect():2330] Wrapping output streams.
+2025-01-10 04:55:35,878 INFO    MainThread:47316 [wandb_run.py:_redirect():2355] Redirects installed.
+2025-01-10 04:55:35,885 INFO    MainThread:47316 [wandb_init.py:init():910] run started, returning control to user process
+2025-01-10 04:56:22,744 WARNING MsgRouterThr:47316 [router.py:message_loop():75] message_loop has been closed

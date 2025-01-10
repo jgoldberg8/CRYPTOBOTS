@@ -1,0 +1,294 @@
+Epoch 1/200 [Train]:   0%|                                                                                                                   | 0/16 [00:00<?, ?it/s]C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py:348: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\amp\autocast_mode.py:266: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([32, 1])) that is different to the input size (torch.Size([32])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([32, 1])) that is different to the input size (torch.Size([32])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Train]:  94%|███████████████████████████████████████████████████████████████████████████     | 15/16 [00:44<00:03,  3.07s/it, loss=0.4336, lr=0.000041]C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([2, 1])) that is different to the input size (torch.Size([2])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([2, 1])) that is different to the input size (torch.Size([2])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [00:45<00:00,  2.82s/it, loss=0.1533, lr=0.000041]
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\numpy\core\fromnumeric.py:3432: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\numpy\core\_methods.py:190: RuntimeWarning: invalid value encountered in double_scalars
+  ret = ret.dtype.type(ret / rcount)
+Epoch 1/200 [Val]:  75%|████████████████████████████████████████████████████████████████████████▊                        | 3/4 [00:02<00:00,  1.37it/s, loss=0.5259]C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([25, 1])) that is different to the input size (torch.Size([25])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([25, 1])) that is different to the input size (torch.Size([25])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.07it/s, loss=0.6451]
+
+Epoch 1/200
+Train Loss: 0.4790, Val Loss: 0.5679
+Train MAE: 0.8433, Val MAE: 1.0434
+Epoch 2/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [00:51<00:00,  3.25s/it, loss=0.8075, lr=0.000043]
+Epoch 2/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.77it/s, loss=0.6113]
+
+Epoch 2/200
+Train Loss: 0.5083, Val Loss: 0.5284
+Train MAE: 0.8705, Val MAE: 1.0428
+Epoch 3/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [01:07<00:00,  4.19s/it, loss=0.5240, lr=0.000046]
+Epoch 3/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.08s/it, loss=0.5585]
+
+Epoch 3/200
+Train Loss: 0.4751, Val Loss: 0.4897
+Train MAE: 0.8683, Val MAE: 1.0393
+Epoch 4/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [02:45<00:00, 10.37s/it, loss=0.3183, lr=0.000051]
+Epoch 4/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:21<00:00,  5.43s/it, loss=0.5507]
+
+Epoch 4/200
+Train Loss: 0.4119, Val Loss: 0.4726
+Train MAE: 0.8602, Val MAE: 1.0683
+Epoch 5/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [02:00<00:00,  7.55s/it, loss=0.2252, lr=0.000056]
+Epoch 5/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.05s/it, loss=0.5160]
+
+Epoch 5/200
+Train Loss: 0.4116, Val Loss: 0.4569
+Train MAE: 0.8612, Val MAE: 1.1367
+Epoch 6/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [01:48<00:00,  6.79s/it, loss=0.2273, lr=0.000064]
+Epoch 6/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.22s/it, loss=0.4667]
+
+Epoch 6/200
+Train Loss: 0.3950, Val Loss: 0.4170
+Train MAE: 0.8960, Val MAE: 1.1518
+Epoch 7/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [02:04<00:00,  7.77s/it, loss=0.1192, lr=0.000072]
+Epoch 7/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.37s/it, loss=0.5229]
+
+Epoch 7/200
+Train Loss: 0.3535, Val Loss: 0.4542
+Train MAE: 0.8714, Val MAE: 1.1927
+Epoch 8/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [02:15<00:00,  8.47s/it, loss=0.1421, lr=0.000082]
+Epoch 8/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.28s/it, loss=0.5472]
+
+Epoch 8/200
+Train Loss: 0.3499, Val Loss: 0.4715
+Train MAE: 0.9007, Val MAE: 1.2759
+Epoch 9/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [03:26<00:00, 12.91s/it, loss=0.0710, lr=0.000092]
+Epoch 9/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:06<00:00,  1.55s/it, loss=0.5186]
+
+Epoch 9/200
+Train Loss: 0.3420, Val Loss: 0.4753
+Train MAE: 0.9013, Val MAE: 1.2369
+Epoch 10/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:24<00:00,  5.30s/it, loss=1.1471, lr=0.000104]
+Epoch 10/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.53it/s, loss=0.5168]
+
+Epoch 10/200
+Train Loss: 0.3965, Val Loss: 0.4509
+Train MAE: 0.9767, Val MAE: 1.2384
+Epoch 11/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:37<00:00,  6.09s/it, loss=0.2601, lr=0.000118]
+Epoch 11/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:14<00:00,  3.56s/it, loss=0.4783]
+
+Epoch 11/200
+Train Loss: 0.3231, Val Loss: 0.4060
+Train MAE: 0.9223, Val MAE: 1.2349
+Epoch 12/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:20<00:00,  8.76s/it, loss=0.3236, lr=0.000132]
+Epoch 12/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.35it/s, loss=0.4325]
+
+Epoch 12/200
+Train Loss: 0.3417, Val Loss: 0.3687
+Train MAE: 0.9078, Val MAE: 1.2041
+Epoch 13/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:03<00:00,  7.74s/it, loss=0.3121, lr=0.000147]
+Epoch 13/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.00s/it, loss=0.4063]
+
+Epoch 13/200
+Train Loss: 0.3173, Val Loss: 0.3518
+Train MAE: 0.9080, Val MAE: 1.1725
+Epoch 14/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:01<00:00,  7.57s/it, loss=1.2459, lr=0.000164]
+Epoch 14/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.12s/it, loss=0.4625]
+
+Epoch 14/200
+Train Loss: 0.3633, Val Loss: 0.3784
+Train MAE: 0.9763, Val MAE: 1.2490
+Epoch 15/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:41<00:00, 10.10s/it, loss=0.2792, lr=0.000181]
+Epoch 15/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:07<00:00,  1.93s/it, loss=0.3877]
+
+Epoch 15/200
+Train Loss: 0.3103, Val Loss: 0.3193
+Train MAE: 0.9208, Val MAE: 1.1676
+Epoch 16/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:06<00:00,  7.90s/it, loss=0.5406, lr=0.000199]
+Epoch 16/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.16s/it, loss=0.3630]
+
+Epoch 16/200
+Train Loss: 0.3186, Val Loss: 0.2958
+Train MAE: 0.9415, Val MAE: 1.1217
+Epoch 17/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:43<00:00,  6.45s/it, loss=0.2396, lr=0.000218]
+Epoch 17/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.09s/it, loss=0.4598]
+
+Epoch 17/200
+Train Loss: 0.2989, Val Loss: 0.3316
+Train MAE: 0.9771, Val MAE: 1.2914
+Epoch 18/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:35<00:00,  5.96s/it, loss=0.1989, lr=0.000238]
+Epoch 18/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.14s/it, loss=0.4431]
+
+Epoch 18/200
+Train Loss: 0.2825, Val Loss: 0.3892
+Train MAE: 0.9184, Val MAE: 1.2327
+Epoch 19/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:52<00:00,  7.00s/it, loss=0.1528, lr=0.000259]
+Epoch 19/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.01s/it, loss=0.4462]
+
+Epoch 19/200
+Train Loss: 0.2796, Val Loss: 0.3278
+Train MAE: 0.9057, Val MAE: 1.2116
+Epoch 20/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:00<00:00,  7.53s/it, loss=0.1468, lr=0.000280]
+Epoch 20/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.11s/it, loss=0.3803]
+
+Epoch 20/200
+Train Loss: 0.2582, Val Loss: 0.2913
+Train MAE: 0.9110, Val MAE: 1.1603
+Epoch 21/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:36<00:00,  6.05s/it, loss=0.1600, lr=0.000303]
+Epoch 21/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.07it/s, loss=0.4202]
+
+Epoch 21/200
+Train Loss: 0.2384, Val Loss: 0.2963
+Train MAE: 0.9389, Val MAE: 1.1974
+Epoch 22/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:36<00:00,  6.06s/it, loss=0.8151, lr=0.000325]
+Epoch 22/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.33it/s, loss=0.3942]
+
+Epoch 22/200
+Train Loss: 0.2592, Val Loss: 0.2794
+Train MAE: 0.9947, Val MAE: 1.2117
+Epoch 23/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:16<00:00,  4.80s/it, loss=0.0579, lr=0.000349]
+Epoch 23/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.42it/s, loss=0.3202]
+
+Epoch 23/200
+Train Loss: 0.2373, Val Loss: 0.2813
+Train MAE: 0.9379, Val MAE: 1.3224
+Epoch 24/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:47<00:00,  6.75s/it, loss=0.4211, lr=0.000372]
+Epoch 24/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.12it/s, loss=0.3839]
+
+Epoch 24/200
+Train Loss: 0.2707, Val Loss: 0.2629
+Train MAE: 0.9652, Val MAE: 1.2162
+Epoch 25/200 [Train]: 100%|██████████████████████████████████████████████████████████████████████████████| 16/16 [01:37<00:00,  6.12s/it, loss=-0.0346, lr=0.000396]
+Epoch 25/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:08<00:00,  2.14s/it, loss=0.4271]
+
+Epoch 25/200
+Train Loss: 0.2007, Val Loss: 0.3028
+Train MAE: 0.9254, Val MAE: 1.1492
+Epoch 26/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:27<00:00,  5.48s/it, loss=0.8481, lr=0.000421]
+Epoch 26/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:06<00:00,  1.62s/it, loss=0.4268]
+
+Epoch 26/200
+Train Loss: 0.2479, Val Loss: 0.2911
+Train MAE: 1.0051, Val MAE: 1.2048
+Epoch 27/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:36<00:00,  9.81s/it, loss=0.0454, lr=0.000446]
+Epoch 27/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:07<00:00,  1.96s/it, loss=0.3098]
+
+Epoch 27/200
+Train Loss: 0.1986, Val Loss: 0.2261
+Train MAE: 0.9995, Val MAE: 1.2645
+Epoch 28/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:22<00:00,  8.92s/it, loss=0.1874, lr=0.000471]
+Epoch 28/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.47s/it, loss=0.3821]
+
+Epoch 28/200
+Train Loss: 0.2193, Val Loss: 0.3103
+Train MAE: 0.9645, Val MAE: 1.3121
+Epoch 29/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:55<00:00,  7.25s/it, loss=0.0189, lr=0.000496]
+Epoch 29/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.40s/it, loss=0.5115]
+
+Epoch 29/200
+Train Loss: 0.2210, Val Loss: 0.3479
+Train MAE: 0.9282, Val MAE: 1.2260
+Epoch 30/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [03:12<00:00, 12.05s/it, loss=0.0822, lr=0.000521]
+Epoch 30/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.02s/it, loss=0.3305]
+
+Epoch 30/200
+Train Loss: 0.2148, Val Loss: 0.2064
+Train MAE: 0.9051, Val MAE: 1.2180
+Epoch 31/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [03:13<00:00, 12.10s/it, loss=0.0695, lr=0.000546]
+Epoch 31/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:09<00:00,  2.43s/it, loss=0.4184]
+
+Epoch 31/200
+Train Loss: 0.1860, Val Loss: 0.2836
+Train MAE: 0.9453, Val MAE: 1.2863
+Epoch 32/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:21<00:00,  5.10s/it, loss=0.3669, lr=0.000571]
+Epoch 32/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.54it/s, loss=0.3241]
+
+Epoch 32/200
+Train Loss: 0.2158, Val Loss: 0.2458
+Train MAE: 1.0207, Val MAE: 1.2604
+Epoch 33/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [00:58<00:00,  3.65s/it, loss=0.1904, lr=0.000596]
+Epoch 33/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.32it/s, loss=0.4685]
+
+Epoch 33/200
+Train Loss: 0.1916, Val Loss: 0.3590
+Train MAE: 0.9671, Val MAE: 1.1173
+Epoch 34/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:56<00:00,  7.30s/it, loss=0.2940, lr=0.000621]
+Epoch 34/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:10<00:00,  2.73s/it, loss=0.3388]
+
+Epoch 34/200
+Train Loss: 0.2468, Val Loss: 0.2348
+Train MAE: 0.9589, Val MAE: 1.1414
+Epoch 35/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:56<00:00,  7.29s/it, loss=0.6986, lr=0.000645]
+Epoch 35/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.30it/s, loss=0.4737]
+
+Epoch 35/200
+Train Loss: 0.2334, Val Loss: 0.3615
+Train MAE: 0.9775, Val MAE: 1.0883
+Epoch 36/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:26<00:00,  5.39s/it, loss=0.4712, lr=0.000669]
+Epoch 36/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.24it/s, loss=0.2628]
+
+Epoch 36/200
+Train Loss: 0.1956, Val Loss: 0.2346
+Train MAE: 0.9964, Val MAE: 1.1901
+Epoch 37/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:25<00:00,  5.35s/it, loss=0.1163, lr=0.000693]
+Epoch 37/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:07<00:00,  1.89s/it, loss=0.3855]
+
+Epoch 37/200
+Train Loss: 0.2023, Val Loss: 0.2678
+Train MAE: 0.9926, Val MAE: 1.1709
+Epoch 38/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:39<00:00,  6.21s/it, loss=0.1848, lr=0.000716]
+Epoch 38/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.15s/it, loss=0.4772]
+
+Epoch 38/200
+Train Loss: 0.2202, Val Loss: 0.4246
+Train MAE: 0.9926, Val MAE: 1.2868
+Epoch 39/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:00<00:00,  7.54s/it, loss=0.2039, lr=0.000739]
+Epoch 39/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.47s/it, loss=1.2949]
+
+Epoch 39/200
+Train Loss: 0.2702, Val Loss: 0.6237
+Train MAE: 0.9441, Val MAE: 1.2496
+Epoch 40/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:50<00:00,  6.92s/it, loss=0.1605, lr=0.000761]
+Epoch 40/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.18s/it, loss=0.3829]
+
+Epoch 40/200
+Train Loss: 0.2484, Val Loss: 0.3135
+Train MAE: 0.9263, Val MAE: 1.2401
+Epoch 41/200 [Train]: 100%|██████████████████████████████████████████████████████████████████████████████| 16/16 [01:56<00:00,  7.29s/it, loss=-0.0600, lr=0.000782]
+Epoch 41/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.24s/it, loss=0.5332]
+
+Epoch 41/200
+Train Loss: 0.2264, Val Loss: 0.3535
+Train MAE: 0.9355, Val MAE: 1.1726
+Epoch 42/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [01:57<00:00,  7.33s/it, loss=0.0484, lr=0.000803]
+Epoch 42/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.21s/it, loss=0.3531]
+
+Epoch 42/200
+Train Loss: 0.1932, Val Loss: 0.2842
+Train MAE: 0.9088, Val MAE: 1.0884
+Epoch 43/200 [Train]: 100%|██████████████████████████████████████████████████████████████████████████████| 16/16 [01:50<00:00,  6.89s/it, loss=-0.0337, lr=0.000823]
+Epoch 43/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.23s/it, loss=0.3833]
+
+Epoch 43/200
+Train Loss: 0.1951, Val Loss: 0.2801
+Train MAE: 0.9234, Val MAE: 1.1938
+Epoch 44/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:09<00:00,  8.09s/it, loss=0.0740, lr=0.000842]
+Epoch 44/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:04<00:00,  1.12s/it, loss=0.4768]
+
+Epoch 44/200
+Train Loss: 0.2267, Val Loss: 0.2741
+Train MAE: 0.9191, Val MAE: 1.1946
+Epoch 45/200 [Train]: 100%|███████████████████████████████████████████████████████████████████████████████| 16/16 [02:10<00:00,  8.14s/it, loss=0.1329, lr=0.000860]
+Epoch 45/200 [Val]: 100%|████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:05<00:00,  1.36s/it, loss=0.7451]
+
+Epoch 45/200
+Train Loss: 0.1904, Val Loss: 0.4969
+Train MAE: 1.0181, Val MAE: 1.2357
+
+Early stopping triggered after 45 epochs
+C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py:464: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(f"{checkpoint_dir}/best_model.pt")

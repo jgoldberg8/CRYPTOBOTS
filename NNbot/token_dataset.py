@@ -52,7 +52,7 @@ class TokenDataset(Dataset):
             'creation_time_numeric'
         ] 
         
-        self.targets = ['peak_market_cap', 'time_to_peak']
+        self.targets = ['peak_market_cap']
 
 
         
@@ -62,28 +62,17 @@ class TokenDataset(Dataset):
                 self.global_scaler = StandardScaler()  # Separate scaler for global features
                 self.target_scaler = StandardScaler()  # Separate scaler for targets
                 self.scaled_data = self._preprocess_data(df, fit=True)
-                
-                # Create a combined scaler for all features and targets
-                combined_features = df[self.global_features + self.targets]
-                self.scaler = StandardScaler().fit(combined_features)
+                self.scaler = scaler
             else:
                 self.global_scaler = scaler['global']
                 self.target_scaler = scaler['target']
                 self.scaled_data = self._preprocess_data(df, fit=False)
-                self.scaler = scaler.get('scaler')
         else:
             if scaler is None:
                 raise ValueError("Scaler must be provided for test data")
-            
             self.global_scaler = scaler['global']
             self.target_scaler = scaler['target']
             self.scaled_data = self._preprocess_data(df, fit=False)
-            self.scaler = scaler.get('scaler')
-        
-        # Ensure scaler is not None
-        if self.scaler is None:
-            combined_features = df[self.global_features + self.targets]
-            self.scaler = StandardScaler().fit(combined_features)
             
         self.quality_features = self._calculate_quality_features(df)
 
@@ -170,3 +159,10 @@ class TokenDataset(Dataset):
             'quality_features': quality_features,
             'targets': targets
         }
+    
+
+
+
+
+
+

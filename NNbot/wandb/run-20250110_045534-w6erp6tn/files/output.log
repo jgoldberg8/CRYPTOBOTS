@@ -1,0 +1,41 @@
+Epoch 1/200 [Train]:   0%|                                                                                                                   | 0/16 [00:00<?, ?it/s]C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py:348: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\amp\autocast_mode.py:266: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([32, 1])) that is different to the input size (torch.Size([32])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([32, 1])) that is different to the input size (torch.Size([32])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Train]:  94%|███████████████████████████████████████████████████████████████████████████     | 15/16 [00:37<00:02,  2.40s/it, loss=0.5765, lr=0.000041]C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([2, 1])) that is different to the input size (torch.Size([2])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([2, 1])) that is different to the input size (torch.Size([2])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Train]: 100%|████████████████████████████████████████████████████████████████████████████████| 16/16 [00:37<00:00,  2.37s/it, loss=0.7130, lr=0.000041]
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\numpy\core\fromnumeric.py:3432: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\numpy\core\_methods.py:190: RuntimeWarning: invalid value encountered in double_scalars
+  ret = ret.dtype.type(ret / rcount)
+Epoch 1/200 [Val]:  75%|████████████████████████████████████████████████████████████████████████▊                        | 3/4 [00:00<00:00,  3.08it/s, loss=0.4843]C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:608: UserWarning: Using a target size (torch.Size([25, 1])) that is different to the input size (torch.Size([25])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.mse_loss(input, target, reduction=self.reduction)
+C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\loss.py:128: UserWarning: Using a target size (torch.Size([25, 1])) that is different to the input size (torch.Size([25])). This will likely lead to incorrect results due to broadcasting. Please ensure they have the same size.
+  return F.l1_loss(input, target, reduction=self.reduction)
+Epoch 1/200 [Val]: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:01<00:00,  3.08it/s, loss=0.5899]
+
+Epoch 1/200
+Train Loss: 0.5345, Val Loss: 0.5329
+Train MAE: 0.9316, Val MAE: 1.0061
+Epoch 2/200 [Train]:  12%|██████████▏                                                                      | 2/16 [00:07<00:51,  3.71s/it, loss=0.5436, lr=0.000041]
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 583, in <module>
+    results = main()
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 535, in main
+    model, training_stats, best_val_loss = train_model(
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 363, in train_model
+    scaler.scale(loss).backward()
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\_tensor.py", line 581, in backward
+    torch.autograd.backward(
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\autograd\__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\autograd\graph.py", line 825, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+KeyboardInterrupt

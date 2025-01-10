@@ -1,0 +1,5 @@
+2025-01-10 04:14:23,671 - INFO - Starting training pipeline
+2025-01-10 04:14:23,672 - INFO - Using device: cpu
+2025-01-10 04:14:23,674 - INFO - Loading data...
+2025-01-10 04:14:23,880 - INFO - Data loaded and cleaned. Shape: (1669, 127)
+2025-01-10 04:14:23,890 - INFO - Train set size: 1335, Validation set size: 334

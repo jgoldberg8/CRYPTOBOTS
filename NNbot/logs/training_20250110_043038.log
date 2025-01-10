@@ -1,0 +1,29 @@
+2025-01-10 04:30:38,458 - INFO - Starting training pipeline
+2025-01-10 04:30:38,458 - INFO - Using device: cpu
+2025-01-10 04:30:38,458 - INFO - Loading data...
+2025-01-10 04:30:40,832 - INFO - Data loaded and cleaned. Shape: (603, 4351)
+2025-01-10 04:30:41,074 - INFO - Train set size: 482, Validation set size: 121
+2025-01-10 04:31:06,924 - INFO - Data loaders created
+2025-01-10 04:31:07,024 - INFO - Model initialized
+2025-01-10 04:31:07,025 - INFO - Starting model training...
+2025-01-10 04:31:11,201 - ERROR - Error during training: 'GranularityProcessor' object has no attribute 'granularity_processors'
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 561, in main
+    model, training_stats, best_val_loss = train_model(
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 376, in train_model
+    mean, log_var = model(batch)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 240, in forward
+    processed = self.granularity_processors[granularity](features, lengths)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 134, in forward
+    for granularity in self.granularity_processors.keys():
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1931, in __getattr__
+    raise AttributeError(
+AttributeError: 'GranularityProcessor' object has no attribute 'granularity_processors'

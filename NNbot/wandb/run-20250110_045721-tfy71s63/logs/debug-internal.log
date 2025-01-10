@@ -1,0 +1,16 @@
+{"time":"2025-01-10T04:57:21.4908873-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.2","symlink path":"C:\\Users\\jegol\\CryptoProjects\\BOTGITREPO\\CRYPTOBOTS\\NNbot\\wandb\\run-20250110_045721-tfy71s63\\logs\\debug-core.log"}
+{"time":"2025-01-10T04:57:21.6166632-05:00","level":"INFO","msg":"created new stream","id":"tfy71s63"}
+{"time":"2025-01-10T04:57:21.617217-05:00","level":"INFO","msg":"stream: started","id":"tfy71s63"}
+{"time":"2025-01-10T04:57:21.617217-05:00","level":"INFO","msg":"handler: started","stream_id":"tfy71s63"}
+{"time":"2025-01-10T04:57:21.6173839-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"tfy71s63"}
+{"time":"2025-01-10T04:57:21.6173839-05:00","level":"INFO","msg":"sender: started","stream_id":"tfy71s63"}
+{"time":"2025-01-10T04:57:22.1267639-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-10T06:27:34.3090784-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-10T06:27:34.3206976-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-10T06:27:35.0891606-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-10T06:27:35.2786962-05:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-01-10T06:27:36.5250147-05:00","level":"INFO","msg":"stream: closing","id":"tfy71s63"}
+{"time":"2025-01-10T06:27:36.5255441-05:00","level":"INFO","msg":"handler: closed","stream_id":"tfy71s63"}
+{"time":"2025-01-10T06:27:36.5255441-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"tfy71s63"}
+{"time":"2025-01-10T06:27:36.5255441-05:00","level":"INFO","msg":"sender: closed","stream_id":"tfy71s63"}
+{"time":"2025-01-10T06:27:36.5354348-05:00","level":"INFO","msg":"stream: closed","id":"tfy71s63"}
