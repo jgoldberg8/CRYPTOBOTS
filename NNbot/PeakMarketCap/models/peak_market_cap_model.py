@@ -22,7 +22,7 @@ from utils.early_stopping import EarlyStopping
 class PeakMarketCapPredictor(nn.Module):
     def __init__(self, input_size, hidden_size=256, num_layers=3, dropout_rate=0.5):
         super().__init__()
-        self.device = torch.device('cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         torch.backends.mkldnn.enabled = True
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
@@ -190,7 +190,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                min_delta=0.000544769124869796,
                                underprediction_penalty=2.0):
     torch.backends.mkldnn.enabled = True
-    device = torch.device('cpu')    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
     # Initialize model
     input_size = 11
     peak_market_cap_model = PeakMarketCapPredictor(
@@ -328,7 +328,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
 
 def main():
     torch.backends.mkldnn.enabled = True
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     print(f"MKL Enabled: {torch.backends.mkl.is_available()}")
     print(f"MKL-DNN Enabled: {torch.backends.mkldnn.is_available()}") 
