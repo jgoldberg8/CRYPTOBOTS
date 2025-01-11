@@ -137,7 +137,13 @@ class PeakMarketCapPredictor(nn.Module):
 
     def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
         # Move all inputs to device
+        def check_tensor(name, tensor):
+            if torch.isnan(tensor).any():
+                print(f"NaN detected in {name}")
+                return True
+            return False
         x_5s = x_5s.to(self.device)
+        check_tensor("conv_5s", x_5s)
         x_10s = x_10s.to(self.device)
         x_20s = x_20s.to(self.device)
         x_30s = x_30s.to(self.device)
@@ -153,7 +159,9 @@ class PeakMarketCapPredictor(nn.Module):
         x_5s = self.conv_5s(x_5s.transpose(1, 2))  # (batch, features, seq) for CNN
         x_5s = x_5s.transpose(1, 2)  # Back to (batch, seq, features) for LSTM
         x_5s, _ = self.lstm_5s(x_5s)  
+        check_tensor("lstm_5s", x_5s)
         x_5s = self.range_attention_5s(x_5s, value_range)
+        check_tensor("attention_5s", x_5s)
         
         # Process 10-second windows
         x_10s = self.conv_10s(x_10s.transpose(1, 2))
@@ -287,13 +295,21 @@ def train_peak_market_cap_model(train_loader, val_loader,
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'], batch['quality_features']
                     )
+                    if torch.isnan(output).any():
+                        print(f"NaN in model output: {output}")
+                        continue
                     loss = custom_market_cap_loss(
                         output, 
                         batch['targets'][:, 0].unsqueeze(1),
                         underprediction_penalty,
                         scale_factor=scale_factor
                     )
+                    
                     loss = loss / accumulation_steps
+                    if torch.isnan(loss) or loss > 1e5:
+                        print(f"Problem with loss: {loss}")
+                        print(f"Output stats: min={output.min()}, max={output.max()}, mean={output.mean()}")
+                        continue
                 
                 scaler.scale(loss).backward()
                 

@@ -132,47 +132,21 @@ def clean_dataset(df):
     return df
 
 def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=100):
-    """Enhanced loss function with safety checks for numerical stability"""
-    eps = 1e-8  # Small epsilon for numerical stability
-    
-    # Add safety clamps to prevent extreme values
-    pred = torch.clamp(pred, min=-1e6, max=1e6)
-    target = torch.clamp(target, min=-1e6, max=1e6)
-    
+    """Simpler, more stable loss function"""
+    # Basic MSE with underprediction penalty
     diff = pred - target
     
-    # Calculate median with safety checks
-    target_median = torch.median(torch.abs(target) + eps)
-    
-    # High value masks with safe thresholds
-    high_value_mask = target > (target_median * 1.5)
-    very_high_value_mask = target > (target_median * 2.5)
-    
-    # Base loss calculation with numerical stability
+    # Calculate base loss
     base_loss = torch.where(diff < 0,
-                         torch.where(very_high_value_mask,
-                                   torch.abs(diff) * underprediction_penalty * 2.0,
-                                   torch.where(high_value_mask,
-                                             torch.abs(diff) * underprediction_penalty * 1.5,
-                                             torch.abs(diff) * underprediction_penalty)),
+                         torch.abs(diff) * underprediction_penalty,
                          torch.abs(diff))
     
-    # Safe scaling calculation
-    scale_weight = torch.log1p(torch.abs(target)) / scale_factor
-    scale_weight = torch.clamp(scale_weight, min=0.0, max=5.0)  # Prevent extreme scaling
+    # Add simple high-value scaling
+    target_abs = torch.abs(target)
+    scale_weight = torch.clamp(target_abs / scale_factor, min=0.1, max=2.0)
     
-    weighted_loss = base_loss * (1 + scale_weight)
-    
-    # Safe mean calculation
-    loss = torch.mean(torch.where(torch.isnan(weighted_loss), 
-                                 torch.full_like(weighted_loss, 1e6), 
-                                 weighted_loss))
-    
-    # Final safety check
-    if torch.isnan(loss) or torch.isinf(loss):
-        return torch.tensor(1e6, device=pred.device, dtype=pred.dtype)
-        
-    return loss
+    loss = base_loss * scale_weight
+    return torch.mean(loss)
 
 
 class AttentionModule(nn.Module):
@@ -207,11 +181,13 @@ class RangeAttention(nn.Module):
         )
         
     def forward(self, x, value_range):
+        
         # x shape: [batch_size, seq_len, hidden_size]
         # value_range shape: [batch_size, hidden_size]
         
         # Expand value_range to match x's sequence dimension
         value_range = value_range.unsqueeze(1).expand(-1, x.size(1), -1)
+        
         # Now value_range shape: [batch_size, seq_len, hidden_size]
         
         # Concatenate along feature dimension
