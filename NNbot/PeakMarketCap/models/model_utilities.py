@@ -48,6 +48,21 @@ def clean_dataset(df):
     new_features['momentum_direction'] = np.sign(df[momentum_cols].mean(axis=1))
     new_features['momentum_magnitude'] = np.abs(df[momentum_cols]).mean(axis=1)
     
+    # Create temporary DataFrame for early features calculation
+    temp_df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
+    
+    # Now add early-stage specific features using temp_df
+    new_features['early_stage_volume'] = np.where(df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5,
+                                                df['volume_0to10s'], 0)
+    new_features['early_momentum_intensity'] = np.where(df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5,
+                                                      temp_df['momentum_magnitude'] * 1.5, temp_df['momentum_magnitude'])
+    
+    # Add initial growth rate features
+    new_features['initial_growth_rate'] = (df['volume_5to10s'] - df['volume_0to5s']) / (df['volume_0to5s'] + 1e-8)
+    new_features['early_pressure_indicator'] = temp_df['volume_pressure'] * temp_df['momentum_magnitude'] * \
+                                             (df['peak_market_cap'] < df['peak_market_cap'].median())
+    
+    # Rest of your feature calculations...
     # Volume-based features
     new_features['volume_growth_rate'] = (df['volume_20to30s'] - df['volume_0to10s']) / (df['volume_0to10s'] + 1e-8)
     new_features['market_pressure'] = df['volume_0to30s'] * df['buy_pressure_0to30s'] / (df['initial_market_cap'] + 1)
@@ -131,19 +146,27 @@ def clean_dataset(df):
     
     return df
 
-def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=100):
-    """Simpler, more stable loss function"""
-    # Basic MSE with underprediction penalty
+def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=80):
     diff = pred - target
+    target_abs = torch.abs(target)  # Added this line
     
-    # Calculate base loss
+    # Add specific low-value handling
+    low_value_mask = target < target.median() * 0.5
+    mid_value_mask = (target >= target.median() * 0.5) & (target < target.median() * 1.5)
+    high_value_mask = target >= target.median() * 1.5
+    
     base_loss = torch.where(diff < 0,
-                         torch.abs(diff) * underprediction_penalty,
+                         torch.where(low_value_mask,
+                                   torch.abs(diff) * (underprediction_penalty * 1.5),  # Increase penalty for low values
+                                   torch.where(mid_value_mask,
+                                             torch.abs(diff) * underprediction_penalty,
+                                             torch.abs(diff) * (underprediction_penalty * 2.0))),
                          torch.abs(diff))
     
-    # Add simple high-value scaling
-    target_abs = torch.abs(target)
-    scale_weight = torch.clamp(target_abs / scale_factor, min=0.1, max=2.0)
+    # Adjust scaling for different ranges
+    scale_weight = torch.where(low_value_mask,
+                             torch.clamp(target_abs / (scale_factor * 0.5), min=0.2, max=1.5),  # Tighter bounds for low values
+                             torch.clamp(target_abs / scale_factor, min=0.1, max=2.0))
     
     loss = base_loss * scale_weight
     return torch.mean(loss)

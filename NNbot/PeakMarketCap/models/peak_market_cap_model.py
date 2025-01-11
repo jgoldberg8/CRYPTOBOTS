@@ -220,11 +220,11 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                # Architecture parameters 
                                hidden_size=512,             # Increased from 384 due to more data
                                num_layers=4,                # Keep 4 for sequence processing
-                               dropout_rate=0.35,           # Reduced due to more data
+                               dropout_rate=0.4,           # Reduced due to more data
                                
                                # Optimization parameters
-                               learning_rate=0.0008,        # Slightly reduced for stability
-                               weight_decay=8e-6,           # Reduced due to more data
+                               learning_rate=0.0006,        # Slightly reduced for stability
+                               weight_decay= 1e-5,           # Reduced due to more data
                                
                                # Training dynamics
                                batch_size=48,               # Increased from 32
@@ -235,7 +235,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                min_delta=5e-5,             # Adjusted for more stable improvements
                                
                                # Loss function
-                               underprediction_penalty=5.0, # Increased slightly
+                               underprediction_penalty=4.5, # Increased slightly
                                scale_factor=80):   
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   

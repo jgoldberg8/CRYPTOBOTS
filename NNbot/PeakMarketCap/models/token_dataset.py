@@ -163,16 +163,20 @@ class TokenDataset(Dataset):
 
 
     def _calculate_sample_weights(self, df):
-        """Calculate importance weights based on market cap magnitude"""
-        # Use absolute values for momentum features
-        momentum_weights = np.abs(df[[col for col in df.columns if 'momentum' in col]]).mean(axis=1)
+        # Calculate range-specific weights
+        low_value_mask = df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5
+        high_value_mask = df['peak_market_cap'] > df['peak_market_cap'].median() * 1.5
         
-        # Use regular values for market cap
+        # Base weights from momentum and market cap
+        momentum_weights = np.abs(df[[col for col in df.columns if 'momentum' in col]]).mean(axis=1)
         market_cap_weights = df['peak_market_cap']
         
-        # Combine weights
-        weights = momentum_weights * market_cap_weights
-        weights = weights + 1e-10  # Small constant for numerical stability
+        # Adjust weights by range
+        range_multiplier = np.where(low_value_mask, 1.5,  # More emphasis on low values
+                                np.where(high_value_mask, 2.0, 1.0))
+        
+        weights = momentum_weights * market_cap_weights * range_multiplier
+        weights = weights + 1e-10
         return weights / weights.sum()
 
     def _calculate_feature_importance(self, df):
