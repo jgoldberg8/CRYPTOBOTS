@@ -105,7 +105,7 @@ def create_representative_subset(df, sample_size=300):
 
 def prepare_data(sample_size=300, batch_size=64):
     print("Loading data...")
-    df = pd.read_csv('data/higher-peak-data.csv')
+    df = pd.read_csv('data/token-data.csv')
     
     print("Cleaning dataset...")
     df = clean_dataset(df)
@@ -154,7 +154,7 @@ def objective(trial):
     
     # Architecture parameters - optimized for market cap prediction
     hidden_size = trial.suggest_categorical('hidden_size', [256, 512, 768, 1024])
-    num_layers = trial.suggest_int('num_layers', [3, 4, 5])
+    num_layers = trial.suggest_int('num_layers', 3, 5)
     dropout_rate = trial.suggest_float('dropout_rate', 0.3, 0.5)
     
     # Optimization parameters
