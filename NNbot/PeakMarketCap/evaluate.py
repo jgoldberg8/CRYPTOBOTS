@@ -51,7 +51,7 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     # Initialize model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     input_size = 11
-    peak_market_cap_model = PeakMarketCapPredictor(input_size=input_size,hidden_size=384,num_layers=4, dropout_rate=0.45).to(device)
+    peak_market_cap_model = PeakMarketCapPredictor(input_size=input_size,hidden_size=512,num_layers=4, dropout_rate=0.35).to(device)
 
     # Load saved model
     peak_market_cap_checkpoint = torch.load(peak_market_cap_model_path, map_location=device, weights_only=True)
