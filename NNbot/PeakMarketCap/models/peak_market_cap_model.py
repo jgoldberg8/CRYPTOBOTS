@@ -278,7 +278,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
             batch = {k: v.to(device) for k, v in batch.items()}
             
             if use_amp:
-                with torch.autocast(enabled=use_amp):
+                with torch.autocast(device_type='cuda', enabled=use_amp):
                     output = peak_market_cap_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'], batch['quality_features']
