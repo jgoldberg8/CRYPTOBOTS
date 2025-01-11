@@ -25,7 +25,7 @@ class MultiGranularAttention(nn.Module):
         self.head_dim = hidden_size // num_heads
         
         # Ensure hidden_size is divisible by num_heads
-        assert hidden_size % num_heads == 0, "hidden_size must be divisible by num_heads"
+        assert hidden_size % num_heads == 0, f"hidden_size ({hidden_size}) must be divisible by num_heads ({num_heads}). Remainder: {hidden_size % num_heads}"
         
         self.query = nn.Linear(hidden_size, hidden_size)
         self.key = nn.Linear(hidden_size, hidden_size)
@@ -142,16 +142,27 @@ class GranularityProcessor(nn.Module):
         return output
 
 class MultiGranularPeakPredictor(nn.Module):
-    def __init__(self, input_size, hidden_size=256, dropout_rate=0.5):
+    def __init__(self, 
+                 input_size, 
+                 hidden_size=256, 
+                 num_heads=8,
+                 num_gru_layers=2,
+                 dropout_rate=0.5,
+                 granularities=None):
         super().__init__()
+        
+        if granularities is None:
+            granularities = ['5s', '10s', '20s', '30s', '60s']
         
         # Processors for each granularity
         self.granularity_processors = nn.ModuleDict({
-            '5s': GranularityProcessor(input_size, hidden_size, dropout_rate),
-            '10s': GranularityProcessor(input_size, hidden_size, dropout_rate),
-            '20s': GranularityProcessor(input_size, hidden_size, dropout_rate),
-            '30s': GranularityProcessor(input_size, hidden_size, dropout_rate),
-            '60s': GranularityProcessor(input_size, hidden_size, dropout_rate)
+            gran: GranularityProcessor(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_heads=num_heads,
+                num_gru_layers=num_gru_layers,
+                dropout_rate=dropout_rate
+            ) for gran in granularities
         })
         
         # Global feature processor
@@ -162,12 +173,18 @@ class MultiGranularPeakPredictor(nn.Module):
             nn.Dropout(dropout_rate)
         )
         
-        # Cross-granularity attention for combining different timescales
-        self.cross_attention = MultiGranularAttention(hidden_size)
+        # Cross-granularity attention
+        self.cross_attention = MultiGranularAttention(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            dropout_rate=dropout_rate
+        )
         
         # Final prediction layers
+        prediction_input_size = hidden_size * (len(granularities) + 1)  # granularities + global
+        
         self.predictor = nn.Sequential(
-            nn.Linear(hidden_size * 6, hidden_size * 2),  # 5 granularities + global
+            nn.Linear(prediction_input_size, hidden_size * 2),
             nn.LayerNorm(hidden_size * 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
@@ -177,7 +194,7 @@ class MultiGranularPeakPredictor(nn.Module):
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, 2)  # Mean and log variance
         )
-        
+    
     def forward(self, batch):
         # Process each granularity
         granularity_outputs = {}
@@ -185,33 +202,23 @@ class MultiGranularPeakPredictor(nn.Module):
             features = batch[f'features_{granularity}']
             lengths = batch.get(f'length_{granularity}')
             
-            # Ensure lengths is properly formatted if it exists
             if lengths is not None:
                 if isinstance(lengths, dict):
                     lengths = lengths.get('lengths')
                 lengths = lengths.squeeze() if hasattr(lengths, 'squeeze') else lengths
-                
-                # Ensure all lengths are positive
-                if isinstance(lengths, torch.Tensor):
-                    lengths = torch.clamp(lengths, min=1)
-                else:
-                    lengths = np.maximum(lengths, 1)
+                lengths = torch.clamp(lengths, min=1) if isinstance(lengths, torch.Tensor) else np.maximum(lengths, 1)
             
             processed = self.granularity_processors[granularity](features, lengths)
             
-            # Use attention-weighted pooling over valid timesteps
             if lengths is not None:
                 mask = torch.arange(processed.size(1), device=processed.device)[None, :] < lengths[:, None]
                 masked_output = processed * mask.unsqueeze(-1)
-                
-                # Attention pooling with safe masking
                 scores = torch.sum(masked_output, dim=-1, keepdim=True)
                 mask_float = mask.float().unsqueeze(-1)
                 scores = scores.masked_fill(mask_float == 0, float('-inf'))
                 attention = F.softmax(scores, dim=1)
                 pooled = torch.sum(masked_output * attention, dim=1)
             else:
-                # If no lengths provided, use mean pooling
                 pooled = processed.mean(dim=1)
             
             granularity_outputs[granularity] = pooled
@@ -236,9 +243,6 @@ class MultiGranularPeakPredictor(nn.Module):
         mean, log_var = output.chunk(2, dim=-1)
         
         return mean.squeeze(-1), log_var.squeeze(-1)
-
-
-
 
 def train_model(model, train_loader, val_loader,
                 num_epochs=200,
@@ -271,7 +275,7 @@ def train_model(model, train_loader, val_loader,
         final_div_factor=1000.0
     )
     
-    scaler = GradScaler('cuda')
+    scaler = GradScaler()
     best_val_loss = float('inf')
     patience_counter = 0
     training_stats = {
@@ -281,7 +285,6 @@ def train_model(model, train_loader, val_loader,
         'best_epoch': 0
     }
     
-    # Initialize wandb
     if use_wandb:
         wandb.init(project=project_name, config={
             "learning_rate": learning_rate,
@@ -300,52 +303,35 @@ def train_model(model, train_loader, val_loader,
         train_losses = []
         train_metrics = {'mse': [], 'mae': [], 'directional': []}
         
-        # Progress bar for training
         train_pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Train]')
         
-        for batch_idx, batch in enumerate(train_pbar):
-            # Move batch to device
+        for batch in train_pbar:
             batch = {k: v.to(device) for k, v in batch.items()}
-            
-            # Clear gradients
             optimizer.zero_grad()
             
-            # Mixed precision training
             with autocast():
-                # Forward pass
                 mean, log_var = model(batch)
                 loss = criterion(mean, log_var, batch['targets'])
                 
-                # Calculate additional metrics
                 mse = nn.MSELoss()(mean, batch['targets'])
                 mae = nn.L1Loss()(mean, batch['targets'])
                 
-                # Track metrics
                 train_losses.append(loss.item())
                 train_metrics['mse'].append(mse.item())
                 train_metrics['mae'].append(mae.item())
             
-            # Backward pass with gradient scaling
             scaler.scale(loss).backward()
-            
-            # Gradient clipping
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            
-            # Optimizer step
             scaler.step(optimizer)
             scaler.update()
-            
-            # Learning rate scheduler step
             scheduler.step()
             
-            # Update progress bar
             train_pbar.set_postfix({
                 'loss': f"{loss.item():.4f}",
                 'lr': f"{scheduler.get_last_lr()[0]:.6f}"
             })
         
-        # Calculate average training metrics
         avg_train_loss = np.mean(train_losses)
         avg_train_metrics = {k: np.mean(v) for k, v in train_metrics.items()}
         
@@ -354,34 +340,26 @@ def train_model(model, train_loader, val_loader,
         val_losses = []
         val_metrics = {'mse': [], 'mae': [], 'directional': []}
         
-        # Progress bar for validation
         val_pbar = tqdm(val_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Val]')
         
         with torch.no_grad():
             for batch in val_pbar:
                 batch = {k: v.to(device) for k, v in batch.items()}
-                
-                # Forward pass
                 mean, log_var = model(batch)
                 loss = criterion(mean, log_var, batch['targets'])
                 
-                # Calculate metrics
                 mse = nn.MSELoss()(mean, batch['targets'])
                 mae = nn.L1Loss()(mean, batch['targets'])
                 
-                # Track metrics
                 val_losses.append(loss.item())
                 val_metrics['mse'].append(mse.item())
                 val_metrics['mae'].append(mae.item())
                 
-                # Update progress bar
                 val_pbar.set_postfix({'loss': f"{loss.item():.4f}"})
         
-        # Calculate average validation metrics
         avg_val_loss = np.mean(val_losses)
         avg_val_metrics = {k: np.mean(v) for k, v in val_metrics.items()}
         
-        # Log metrics
         if use_wandb:
             wandb.log({
                 "train_loss": avg_train_loss,
@@ -393,7 +371,6 @@ def train_model(model, train_loader, val_loader,
                 "learning_rate": scheduler.get_last_lr()[0]
             })
         
-        # Print epoch summary
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         print(f"Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
         print(f"Train MAE: {avg_train_metrics['mae']:.4f}, Val MAE: {avg_val_metrics['mae']:.4f}")
@@ -435,39 +412,28 @@ def train_model(model, train_loader, val_loader,
     
     return model, training_stats, best_val_loss
 
-
-
-
 def main():
     # Setup logging
     logger = setup_logging()
     logger.info("Starting training pipeline")
     
-    # Configuration
+    # Basic configuration - other params will come from tuning
     config = {
-        'input_size': 11,  # Number of base features
-        'hidden_size': 256,
-        'batch_size': 32,
-        'num_epochs': 200,
-        'learning_rate': 0.001,
-        'weight_decay': 0.01,
-        'patience': 15,
+        'input_size': 11,  # Base feature size
         'val_size': 0.2,
         'random_state': 42,
-        'use_wandb': True,  # Enable wandb logging
+        'use_wandb': True,
         'project_name': 'time_to_peak'
     }
     
-    # Create necessary directories
     os.makedirs('checkpoints', exist_ok=True)
     os.makedirs('models', exist_ok=True)
     
-    # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
     try:
-        # Load and preprocess data
+        # Load data
         logger.info("Loading data...")
         df = pd.read_csv('data/time-data.csv')
         df = clean_dataset(df)
@@ -481,18 +447,17 @@ def main():
         )
         logger.info(f"Train set size: {len(train_df)}, Validation set size: {len(val_df)}")
         
-        # Create data loaders
+        # Create data loaders - batch size will come from tuning
         train_loader, val_loader = create_multi_granular_loaders(
             train_df,
             val_df,
-            batch_size=config['batch_size']
+            batch_size=32  # Default batch size, will be overridden by tuning
         )
         logger.info("Data loaders created")
         
-        # Initialize model
+        # Initialize model - parameters will come from tuning
         model = MultiGranularPeakPredictor(
-            input_size=config['input_size'],
-            hidden_size=config['hidden_size']
+            input_size=config['input_size']
         ).to(device)
         logger.info("Model initialized")
         
@@ -502,17 +467,12 @@ def main():
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            num_epochs=config['num_epochs'],
-            learning_rate=config['learning_rate'],
-            weight_decay=config['weight_decay'],
-            patience=config['patience'],
             use_wandb=config['use_wandb'],
-            project_name=config['project_name'],
-            checkpoint_dir='checkpoints'
+            project_name=config['project_name']
         )
         logger.info(f"Training completed. Best validation loss: {best_val_loss:.4f}")
         
-        # Save model and artifacts
+        # Save model
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         save_dir = f'models/peak_predictor_{timestamp}'
         os.makedirs(save_dir, exist_ok=True)
@@ -533,7 +493,6 @@ def main():
         logger.info(f"Model artifacts saved to {save_dir}")
         logger.info("Training pipeline completed successfully")
         
-        # Return results
         return {
             'model': model,
             'training_stats': training_stats,
