@@ -343,7 +343,7 @@ def main():
     # df_08 = pd.read_csv('data/token_data_2025-01-08.csv')
     # df_08 = clean_dataset(df_08)
     # df_08 = add_data_quality_features(df_08)
-    df = pd.read_csv('data/higher-peak-data.csv')
+    df = pd.read_csv('data/token-data.csv')
     df = clean_dataset(df)
     df = add_data_quality_features(df)
 
