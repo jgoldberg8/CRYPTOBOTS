@@ -146,7 +146,7 @@ def clean_dataset(df):
     
     return df
 
-def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=80):
+def custom_market_cap_loss(pred, target, underprediction_penalty=2.0, scale_factor=80):
     diff = pred - target
     target_abs = torch.abs(target)  # Added this line
     
@@ -157,10 +157,10 @@ def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_fact
     
     base_loss = torch.where(diff < 0,
                          torch.where(low_value_mask,
-                                   torch.abs(diff) * (underprediction_penalty * 1.5),  # Increase penalty for low values
+                                   torch.abs(diff) * (underprediction_penalty * 1.2),  # Increase penalty for low values
                                    torch.where(mid_value_mask,
                                              torch.abs(diff) * underprediction_penalty,
-                                             torch.abs(diff) * (underprediction_penalty * 2.0))),
+                                             torch.abs(diff) * (underprediction_penalty * 1.5))),
                          torch.abs(diff))
     
     # Adjust scaling for different ranges
