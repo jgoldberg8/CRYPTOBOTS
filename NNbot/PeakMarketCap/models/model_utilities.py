@@ -131,28 +131,42 @@ def clean_dataset(df):
     
     return df
 
-
 def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=100):
-    """Enhanced loss function with stronger high-value focus"""
+    """Enhanced loss function with safety checks for numerical stability"""
+    # Add safety clamps to prevent extreme values
+    pred = torch.clamp(pred, min=-1e6, max=1e6)
+    target = torch.clamp(target, min=-1e6, max=1e6)
+    
     diff = pred - target
     
-    # Increase penalties for high values
-    high_value_mask = target > target.median() * 1.5  # More aggressive threshold
-    very_high_value_mask = target > target.median() * 2.5  # New mask for very high values
+    # Calculate median with safety checks
+    target_median = torch.median(torch.clamp(target, min=1e-8))
     
+    # High value masks with safe thresholds
+    high_value_mask = target > (target_median * 1.5)
+    very_high_value_mask = target > (target_median * 2.5)
+    
+    # Base loss calculation with numerical stability
     base_loss = torch.where(diff < 0,
                          torch.where(very_high_value_mask,
-                                   torch.abs(diff) * (underprediction_penalty * 2.0),  # Double penalty for very high
+                                   torch.abs(diff) * underprediction_penalty * 2.0,
                                    torch.where(high_value_mask,
-                                             torch.abs(diff) * (underprediction_penalty * 1.5),
+                                             torch.abs(diff) * underprediction_penalty * 1.5,
                                              torch.abs(diff) * underprediction_penalty)),
                          torch.abs(diff))
     
-    # Exponential scaling for high values
-    scale_weight = torch.pow(torch.log1p(torch.abs(target)) / scale_factor, 2)
+    # Safe scaling calculation
+    scale_weight = torch.log1p(torch.abs(target)) / scale_factor
+    scale_weight = torch.clamp(scale_weight, min=0.0, max=10.0)  # Prevent extreme scaling
+    
     weighted_loss = base_loss * (1 + scale_weight)
     
-    return torch.mean(weighted_loss)
+    # Final safety check
+    loss = torch.mean(torch.nan_to_inf(weighted_loss))
+    if torch.isnan(loss) or torch.isinf(loss):
+        return torch.tensor(1e6, device=pred.device, dtype=pred.dtype)  # Fallback value
+    
+    return loss
 
 
 
