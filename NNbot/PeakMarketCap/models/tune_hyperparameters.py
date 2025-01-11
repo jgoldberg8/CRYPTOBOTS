@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 from peak_market_cap_model import PeakMarketCapPredictor, train_peak_market_cap_model
-from token_dataset import TokenDataset
+from PeakMarketCap.models.token_dataset import TokenDataset
 from utils.train_val_split import train_val_split
 from utils.add_data_quality_features import add_data_quality_features
 from PeakMarketCap.models.model_utilities import clean_dataset
@@ -150,7 +150,7 @@ def objective(trial):
     
     # Sample size and batch size tuning
     #sample_size = trial.suggest_categorical('sample_size', [300, 400, 500])
-    batch_size = trial.suggest_categorical('batch_size', [32, 64, 96, 128])
+    batch_size = trial.suggest_categorical('batch_size', [48, 64, 96, 128])
     
     # Architecture parameters - optimized for market cap prediction
     hidden_size = trial.suggest_categorical('hidden_size', [256, 512, 768, 1024])
@@ -166,7 +166,7 @@ def objective(trial):
     min_delta = trial.suggest_float('min_delta', 1e-5, 1e-3, log=True)
     
     # Underprediction penalty
-    underprediction_penalty = trial.suggest_float('underprediction_penalty', 2.0, 6.0)
+    underprediction_penalty = trial.suggest_float('underprediction_penalty', 2.0, 4.0)
     
     print("\nChosen hyperparameters for this trial:")
     #print(f"Sample Size: {sample_size}")
