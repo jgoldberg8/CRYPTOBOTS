@@ -309,7 +309,7 @@ def train_model(model, train_loader, val_loader,
             batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
             
-            with autocast():
+            with torch.autocast(device_type='cuda', enabled=True):
                 mean, log_var = model(batch)
                 loss = criterion(mean, log_var, batch['targets'])
                 
