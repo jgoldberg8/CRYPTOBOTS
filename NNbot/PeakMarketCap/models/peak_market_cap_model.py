@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from contextlib import nullcontext
 
-from PeakMarketCap.models.model_utilities import AttentionModule, clean_dataset, custom_market_cap_loss
+from PeakMarketCap.models.model_utilities import AttentionModule, RangeAttention, clean_dataset, custom_market_cap_loss
 
 from PeakMarketCap.models.token_dataset import TokenDataset
 from utils.train_val_split import train_val_split
@@ -80,6 +80,20 @@ class PeakMarketCapPredictor(nn.Module):
         self.attention_20s = AttentionModule(hidden_size)
         self.attention_30s = AttentionModule(hidden_size)
 
+        # Range-specific attention modules
+        self.range_attention_5s = RangeAttention(hidden_size)
+        self.range_attention_10s = RangeAttention(hidden_size)
+        self.range_attention_20s = RangeAttention(hidden_size)
+        self.range_attention_30s = RangeAttention(hidden_size)
+        # Value range embedding
+        self.value_range_embedding = nn.Sequential(
+        nn.Linear(5, hidden_size),  # Use all global features
+        nn.BatchNorm1d(hidden_size),  # Add batch norm for better training
+        nn.ReLU(),
+        nn.Dropout(dropout_rate),  # Add dropout for regularization
+        nn.Linear(hidden_size, hidden_size)
+        )
+
         # Quality gatetokenda
         self.quality_gate = nn.Sequential(
             nn.Linear(hidden_size + 2, hidden_size),
@@ -94,7 +108,7 @@ class PeakMarketCapPredictor(nn.Module):
         self.global_fc = nn.Linear(5, hidden_size)
 
         # Final layers
-        self.fc1 = nn.Linear(hidden_size * 5, hidden_size)
+        self.fc1 = nn.Linear(hidden_size * 6, hidden_size)
         self.dropout = nn.Dropout(0.4)
         self.fc2 = nn.Linear(hidden_size, 1)  # Output a single value for peak market cap
 
@@ -128,25 +142,28 @@ class PeakMarketCapPredictor(nn.Module):
         
         batch_size = x_5s.size(0)
         
+        # Estimate value range from initial market cap feature
+        value_range = self.value_range_embedding(global_features)
+        
         # Process 5-second windows
-        x_5s = self.conv_5s(x_5s.transpose(1, 2))  # Apply CNN
-        x_5s = x_5s.transpose(1, 2)  # Return to original shape
-        x_5s, _ = self.lstm_5s(x_5s)  # Apply LSTM
-        x_5s = self.attention_5s(x_5s)  # Apply attention
+        x_5s = self.conv_5s(x_5s.transpose(1, 2))  # (batch, features, seq) for CNN
+        x_5s = x_5s.transpose(1, 2)  # Back to (batch, seq, features) for LSTM
+        x_5s, _ = self.lstm_5s(x_5s)  
+        x_5s = self.range_attention_5s(x_5s, value_range)
         
         # Process 10-second windows
         x_10s = self.conv_10s(x_10s.transpose(1, 2))
         x_10s = x_10s.transpose(1, 2)
         x_10s, _ = self.lstm_10s(x_10s)
-        x_10s = self.attention_10s(x_10s)
+        x_10s = self.range_attention_10s(x_10s, value_range)
         
         # Process 20-second windows (no CNN, direct LSTM)
         x_20s, _ = self.lstm_20s(x_20s)
-        x_20s = self.attention_20s(x_20s)
+        x_20s = self.range_attention_20s(x_20s, value_range)
         
         # Process 30-second windows (no CNN, direct LSTM)
         x_30s, _ = self.lstm_30s(x_30s)
-        x_30s = self.attention_30s(x_30s)
+        x_30s = self.range_attention_30s(x_30s, value_range)
         
         # Process global features
         global_features = self.global_fc(global_features)
@@ -169,7 +186,8 @@ class PeakMarketCapPredictor(nn.Module):
             x_10s * quality_weights,
             x_20s * quality_weights,
             x_30s * quality_weights,
-            global_features
+            global_features,
+            value_range  # Add value range to final feature set
         ]
         combined = torch.cat(weighted_features, dim=1)
         
@@ -180,33 +198,33 @@ class PeakMarketCapPredictor(nn.Module):
         output = self.fc2(output)
         
         return output
-    
+        
 
 
 
 
 def train_peak_market_cap_model(train_loader, val_loader, 
-                               num_epochs=200,
+                               num_epochs=300,               # Increased for larger dataset
                                # Architecture parameters 
-                               hidden_size=384,  # Balanced for feature complexity
-                               num_layers=4,     # Keep 4 for sequence length
-                               dropout_rate=0.45, # Higher due to feature richness
+                               hidden_size=512,             # Increased from 384 due to more data
+                               num_layers=4,                # Keep 4 for sequence processing
+                               dropout_rate=0.35,           # Reduced due to more data
                                
                                # Optimization parameters
-                               learning_rate=0.001,  # Conservative given feature scale
-                               weight_decay=2e-5,    # Increased for regularization
+                               learning_rate=0.0008,        # Slightly reduced for stability
+                               weight_decay=1e-5,           # Reduced due to more data
                                
                                # Training dynamics
-                               batch_size=32,        # Smaller for better gradient estimates
-                               accumulation_steps=4,  # Effective batch size = 32 * 4 = 128
+                               batch_size=48,               # Increased from 32
+                               accumulation_steps=3,        # Adjusted for new batch size
                                
                                # Early stopping
-                               patience=25,          # Reduced from 34
-                               min_delta=1e-4,       # Increased due to high variance
+                               patience=35,                 # Increased for larger dataset
+                               min_delta=5e-5,             # Adjusted for more stable improvements
                                
                                # Loss function
-                               underprediction_penalty=3.5,  # Increased due to market cap distribution
-                               scale_factor=100):
+                               underprediction_penalty=4.0, # Increased slightly
+                               scale_factor=100):   
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
     
@@ -228,7 +246,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
     )
 
     # Setup gradient accumulation
-    accumulation_steps = 4
+    accumulation_steps = 3
     
     # Setup learning rate scheduler
     scheduler = optim.lr_scheduler.OneCycleLR(
@@ -391,7 +409,7 @@ def main():
     # Create data loaders with weighted sampling for training
     train_loader_peak = DataLoader(
         train_dataset_peak, 
-        batch_size=32, 
+        batch_size=48, 
         sampler=sampler,
         pin_memory=True,
         num_workers=2
@@ -399,7 +417,7 @@ def main():
     
     val_loader_peak = DataLoader(
         val_dataset_peak, 
-        batch_size=32,
+        batch_size=48,
         shuffle=False,
         pin_memory=True,
         num_workers=2
