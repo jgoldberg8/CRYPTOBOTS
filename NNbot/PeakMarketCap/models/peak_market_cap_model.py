@@ -212,7 +212,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                
                                # Optimization parameters
                                learning_rate=0.0008,        # Slightly reduced for stability
-                               weight_decay=1e-5,           # Reduced due to more data
+                               weight_decay=8e-6,           # Reduced due to more data
                                
                                # Training dynamics
                                batch_size=48,               # Increased from 32
@@ -223,8 +223,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                min_delta=5e-5,             # Adjusted for more stable improvements
                                
                                # Loss function
-                               underprediction_penalty=4.0, # Increased slightly
-                               scale_factor=100):   
+                               underprediction_penalty=5.0, # Increased slightly
+                               scale_factor=80):   
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
     
@@ -264,8 +264,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
     best_val_loss = float('inf')
     
     # Initialize AMP
+    scaler = torch.GradScaler()
     use_amp = torch.cuda.is_available()
-    scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     for epoch in range(num_epochs):
         # Training phase
@@ -278,7 +278,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
             batch = {k: v.to(device) for k, v in batch.items()}
             
             if use_amp:
-                with torch.cuda.amp.autocast():
+                with torch.autocast(enabled=use_amp):
                     output = peak_market_cap_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'], batch['quality_features']

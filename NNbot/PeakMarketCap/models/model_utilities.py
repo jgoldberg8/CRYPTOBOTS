@@ -88,6 +88,10 @@ def clean_dataset(df):
     # Add volume-momentum interactions by range
     new_features['high_value_volume_momentum'] = new_features['high_value_momentum'] * temp_df['volume_pressure']
     new_features['mid_value_volume_momentum'] = new_features['mid_value_momentum'] * temp_df['volume_pressure']
+    # Add to clean_dataset
+    new_features['high_value_indicator'] = (df['peak_market_cap'] > df['peak_market_cap'].median() * 1.5).astype(float)
+    new_features['volume_high_value_interaction'] = new_features['volume_pressure'] * new_features['high_value_indicator']
+    new_features['momentum_high_value_interaction'] = new_features['momentum_magnitude'] * new_features['high_value_indicator']
     
     # Add all new features to original dataframe
     df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
@@ -128,24 +132,24 @@ def clean_dataset(df):
     return df
 
 
-def custom_market_cap_loss(pred, target, underprediction_penalty=3.5, scale_factor=100):
-    """Enhanced loss function with range-specific penalties"""
+def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=100):
+    """Enhanced loss function with stronger high-value focus"""
     diff = pred - target
     
-    # Calculate base loss with dynamic penalty based on value range
-    high_value_mask = target > target.median() * 2  # For values > 2x median
-    mid_value_mask = (target > target.median()) & (target <= target.median() * 2)
+    # Increase penalties for high values
+    high_value_mask = target > target.median() * 1.5  # More aggressive threshold
+    very_high_value_mask = target > target.median() * 2.5  # New mask for very high values
     
     base_loss = torch.where(diff < 0,
-                         torch.where(high_value_mask,
-                                   torch.abs(diff) * (underprediction_penalty * 1.5),  # Higher penalty for high values
-                                   torch.where(mid_value_mask,
-                                             torch.abs(diff) * (underprediction_penalty * 1.2),  # Medium penalty for mid values
-                                             torch.abs(diff) * underprediction_penalty)),  # Base penalty for low values
+                         torch.where(very_high_value_mask,
+                                   torch.abs(diff) * (underprediction_penalty * 2.0),  # Double penalty for very high
+                                   torch.where(high_value_mask,
+                                             torch.abs(diff) * (underprediction_penalty * 1.5),
+                                             torch.abs(diff) * underprediction_penalty)),
                          torch.abs(diff))
     
-    # Add scale-dependent penalty
-    scale_weight = torch.log1p(torch.abs(target)) / scale_factor
+    # Exponential scaling for high values
+    scale_weight = torch.pow(torch.log1p(torch.abs(target)) / scale_factor, 2)
     weighted_loss = base_loss * (1 + scale_weight)
     
     return torch.mean(weighted_loss)
