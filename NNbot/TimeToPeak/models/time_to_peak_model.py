@@ -19,17 +19,20 @@ from TimeToPeak.utils.time_loss import TimePredictionLoss
 from TimeToPeak.utils.clean_dataset import clean_dataset
 
 class MultiGranularAttention(nn.Module):
-    def __init__(self, hidden_size, num_heads=8):
+    def __init__(self, hidden_size, num_heads=8, dropout_rate=0.1):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
+        
+        # Ensure hidden_size is divisible by num_heads
+        assert hidden_size % num_heads == 0, "hidden_size must be divisible by num_heads"
         
         self.query = nn.Linear(hidden_size, hidden_size)
         self.key = nn.Linear(hidden_size, hidden_size)
         self.value = nn.Linear(hidden_size, hidden_size)
         
         self.proj = nn.Linear(hidden_size, hidden_size)
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(dropout_rate)
         
     def forward(self, x, mask=None):
         batch_size, seq_len, hidden_size = x.size()
@@ -59,7 +62,7 @@ class MultiGranularAttention(nn.Module):
         return output, attention_weights
 
 class GranularityProcessor(nn.Module):
-    def __init__(self, input_size, hidden_size, dropout_rate=0.5):
+    def __init__(self, input_size, hidden_size, num_heads=8, num_gru_layers=2, dropout_rate=0.5):
         super().__init__()
         
         self.feature_proj = nn.Sequential(
@@ -76,30 +79,23 @@ class GranularityProcessor(nn.Module):
             nn.Dropout(dropout_rate)
         )
         
-        self.attention = MultiGranularAttention(hidden_size)
+        self.attention = MultiGranularAttention(hidden_size, num_heads=num_heads, dropout_rate=dropout_rate)
         
         self.gru = nn.GRU(
             hidden_size,
             hidden_size // 2,
-            num_layers=2,
+            num_layers=num_gru_layers,
             batch_first=True,
             bidirectional=True,
-            dropout=dropout_rate
+            dropout=dropout_rate if num_gru_layers > 1 else 0
         )
         
     def forward(self, x, lengths=None):
-        # Project features
         x = self.feature_proj(x)
-        
-        # Apply temporal convolution
         conv_out = self.conv(x.transpose(1, 2)).transpose(1, 2)
-        
-        # Apply attention
         att_out, _ = self.attention(conv_out)
         
-        # Process with GRU
         if lengths is not None:
-            # Ensure lengths is a 1D tensor and on CPU
             if not isinstance(lengths, torch.Tensor):
                 lengths = torch.tensor(lengths)
             if len(lengths.shape) > 1:
@@ -107,22 +103,17 @@ class GranularityProcessor(nn.Module):
             if len(lengths.shape) == 0:
                 lengths = lengths.unsqueeze(0)
             
-            # Filter out zero-length sequences
             valid_mask = lengths > 0
             if not valid_mask.any():
-                # If all sequences are invalid, just return mean pooled output
                 return att_out.mean(dim=1).unsqueeze(1)
                 
-            # Get only valid sequences
             valid_att_out = att_out[valid_mask]
             valid_lengths = lengths[valid_mask]
             
-            # Sort sequences by length for packing
             valid_lengths = valid_lengths.cpu()
             sorted_lengths, sorted_idx = valid_lengths.sort(0, descending=True)
             sorted_att_out = valid_att_out[sorted_idx]
             
-            # Pack sequence
             packed_x = nn.utils.rnn.pack_padded_sequence(
                 sorted_att_out, 
                 sorted_lengths.cpu().numpy(),
@@ -130,24 +121,20 @@ class GranularityProcessor(nn.Module):
                 enforce_sorted=True
             )
             
-            # Process with GRU
             gru_out, _ = self.gru(packed_x)
             
-            # Unpack sequence
             unpacked_out, _ = nn.utils.rnn.pad_packed_sequence(
                 gru_out, 
                 batch_first=True,
-                total_length=x.size(1)  # Keep original sequence length
+                total_length=x.size(1)
             )
             
-            # Restore original order
             _, restored_idx = sorted_idx.sort(0)
             gru_out = unpacked_out[restored_idx]
             
-            # Create output tensor with same shape as input
             output = torch.zeros_like(att_out)
             output[valid_mask] = gru_out
-            output[~valid_mask] = att_out[~valid_mask]  # Use attention output for invalid sequences
+            output[~valid_mask] = att_out[~valid_mask]
             
         else:
             output = self.gru(att_out)[0]
@@ -262,35 +249,18 @@ def train_model(model, train_loader, val_loader,
                 project_name="time_to_peak",
                 checkpoint_dir="checkpoints"):
     """
-    Complete training function with gradient scaling, checkpointing, and monitoring
-    
-    Args:
-        model: The MultiGranularPeakPredictor model
-        train_loader: DataLoader for training data
-        val_loader: DataLoader for validation data
-        num_epochs: Maximum number of epochs to train
-        learning_rate: Initial learning rate
-        weight_decay: L2 regularization factor
-        patience: Number of epochs to wait for improvement before early stopping
-        use_wandb: Whether to use Weights & Biases for logging
-        project_name: Name for the wandb project
-        checkpoint_dir: Directory to save model checkpoints
+    Training function simplified to use model's existing parameters
     """
-    
-    # Setup
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
-    # Initialize loss and optimizer
-    criterion = TimePredictionLoss(alpha=0.3, beta=0.2)
+    criterion = TimePredictionLoss()  # Loss parameters will be tuned in the model
     optimizer = optim.AdamW(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=weight_decay,
-        betas=(0.9, 0.999)
+        weight_decay=weight_decay
     )
     
-    # Learning rate scheduler
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=learning_rate,
@@ -301,10 +271,7 @@ def train_model(model, train_loader, val_loader,
         final_div_factor=1000.0
     )
     
-    # Gradient scaler for mixed precision training
-    scaler = GradScaler()
-    
-    # Initialize tracking variables
+    scaler = GradScaler('cuda')
     best_val_loss = float('inf')
     patience_counter = 0
     training_stats = {
