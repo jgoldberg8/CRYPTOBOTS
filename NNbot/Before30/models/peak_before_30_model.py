@@ -232,7 +232,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
             optimizer.zero_grad()
             
             if use_amp:
-                with torch.cuda.amp.autocast('cuda'):
+                with torch.cuda.amp.autocast():
                     # Predict binary outcome
                     binary_pred = hit_peak_before_30_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
@@ -381,13 +381,9 @@ def main_hit_peak_before_30(
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    print(torch.cuda.is_available())  # Should return True
-    print(torch.cuda.device_count())  # Should return the number of GPUs
-    print(torch.cuda.get_device_name(0)) 
     
     # Load and preprocess data
-    df = pd.read_csv('data/before_30_data.csv')
+    df = pd.read_csv('data/token-data.csv')
     
     # Ensure hit_peak_before_30 column exists
     if 'hit_peak_before_30' not in df.columns:

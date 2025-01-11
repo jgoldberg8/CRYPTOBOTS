@@ -196,5 +196,5 @@ def evaluate_hit_peak_before_30_model(hit_peak_before_30_model_path, data_paths)
 if __name__ == "__main__":
     evaluate_hit_peak_before_30_model(
          'best_hit_peak_before_30_model.pth',
-       ['data/before_30_data.csv']
+       ['data/token-data.csv']
     )
