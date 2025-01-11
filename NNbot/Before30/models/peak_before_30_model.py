@@ -205,7 +205,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
     
     # Initialize AMP
     use_amp = device.type == 'cuda'
-    scaler = torch.cuda.amp.GradScaler('cuda') if use_amp else None
+    scaler = torch.GradScaler() if use_amp else None
 
     # Metrics history
     metrics_history = {
@@ -229,7 +229,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
             optimizer.zero_grad()
             
             if use_amp:
-                with torch.cuda.amp.autocast():
+                with torch.autocast(device_type='cuda', enabled=True):
                     # Predict binary outcome (raw logits)
                     binary_pred = hit_peak_before_30_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
@@ -364,7 +364,7 @@ def main_hit_peak_before_30(
     weight_decay=0.01, 
     patience=15, 
     min_delta=0.001,
-    batch_size=128,
+    batch_size=72,
 ):
     
     # Set device
