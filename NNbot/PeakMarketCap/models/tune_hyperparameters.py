@@ -212,6 +212,7 @@ def objective(trial):
 
 def hyperparameter_tuning():
     study = optuna.create_study(direction='minimize')
+    study.start_time = time.time()  # Add start time to study object
     
     # Sophisticated pruning strategy
     study.pruner = optuna.pruners.MedianPruner(
@@ -221,7 +222,7 @@ def hyperparameter_tuning():
         n_min_trials=5
     )
     
-    n_trials = 100  # Good balance with CUDA
+    n_trials = 50  # Good balance with CUDA
     
     def print_callback(study, trial):
         if trial.number % 2 == 0:
@@ -231,13 +232,15 @@ def hyperparameter_tuning():
             for key, value in study.best_trial.params.items():
                 print(f"    {key}: {value:.6f}" if isinstance(value, float) else f"    {key}: {value}")
             
-            elapsed_time = time.time() - study.start_time
-            avg_time_per_trial = elapsed_time / (trial.number + 1)
-            remaining_trials = n_trials - (trial.number + 1)
-            estimated_remaining_time = avg_time_per_trial * remaining_trials
-            
-            print(f"\nProgress: {trial.number + 1}/{n_trials} trials")
-            print(f"Estimated time remaining: {estimated_remaining_time/60:.1f} minutes")
+            # Calculate time estimates using the manually added start_time
+            if hasattr(study, 'start_time'):
+                elapsed_time = time.time() - study.start_time
+                avg_time_per_trial = elapsed_time / (trial.number + 1)
+                remaining_trials = n_trials - (trial.number + 1)
+                estimated_remaining_time = avg_time_per_trial * remaining_trials
+                
+                print(f"\nProgress: {trial.number + 1}/{n_trials} trials")
+                print(f"Estimated time remaining: {estimated_remaining_time/60:.1f} minutes")
     
     study.optimize(
         objective, 
