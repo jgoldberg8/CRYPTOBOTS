@@ -181,14 +181,14 @@ class PeakMarketCapPredictor(nn.Module):
 
 def train_peak_market_cap_model(train_loader, val_loader, 
                                num_epochs=200, 
-                               learning_rate=0.0003034232102344037, 
-                               weight_decay= 7.79770403448178e-05, 
-                               hidden_size=256,
-                               num_layers=3,
-                               dropout_rate=0.39683333144243493,
-                               patience=29, 
-                               min_delta=0.000544769124869796,
-                               underprediction_penalty=2.0):
+                               learning_rate=0.0023451158221575105, 
+                               weight_decay= 0.0023451158221575105, 
+                               hidden_size=512,
+                               num_layers=4,
+                               dropout_rate=0.45765036200255627,
+                               patience=34, 
+                               min_delta=7.634071592224352e-05,
+                               underprediction_penalty=2.0246081078434557):
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
     # Initialize model
@@ -360,8 +360,8 @@ def main():
     })
 
 
-    train_loader_peak = DataLoader(train_dataset_peak, batch_size=128, shuffle=True)
-    val_loader_peak = DataLoader(val_dataset_peak, batch_size=128)
+    train_loader_peak = DataLoader(train_dataset_peak, batch_size=64, shuffle=True)
+    val_loader_peak = DataLoader(val_dataset_peak, batch_size=64)
 
 
     results = {}
