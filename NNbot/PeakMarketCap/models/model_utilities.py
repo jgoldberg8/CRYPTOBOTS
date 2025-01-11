@@ -133,6 +133,8 @@ def clean_dataset(df):
 
 def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_factor=100):
     """Enhanced loss function with safety checks for numerical stability"""
+    eps = 1e-8  # Small epsilon for numerical stability
+    
     # Add safety clamps to prevent extreme values
     pred = torch.clamp(pred, min=-1e6, max=1e6)
     target = torch.clamp(target, min=-1e6, max=1e6)
@@ -140,7 +142,7 @@ def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_fact
     diff = pred - target
     
     # Calculate median with safety checks
-    target_median = torch.median(torch.clamp(target, min=1e-8))
+    target_median = torch.median(torch.abs(target) + eps)
     
     # High value masks with safe thresholds
     high_value_mask = target > (target_median * 1.5)
@@ -157,17 +159,20 @@ def custom_market_cap_loss(pred, target, underprediction_penalty=4.0, scale_fact
     
     # Safe scaling calculation
     scale_weight = torch.log1p(torch.abs(target)) / scale_factor
-    scale_weight = torch.clamp(scale_weight, min=0.0, max=10.0)  # Prevent extreme scaling
+    scale_weight = torch.clamp(scale_weight, min=0.0, max=5.0)  # Prevent extreme scaling
     
     weighted_loss = base_loss * (1 + scale_weight)
     
-    # Final safety check
-    loss = torch.mean(torch.nan_to_inf(weighted_loss))
-    if torch.isnan(loss) or torch.isinf(loss):
-        return torch.tensor(1e6, device=pred.device, dtype=pred.dtype)  # Fallback value
+    # Safe mean calculation
+    loss = torch.mean(torch.where(torch.isnan(weighted_loss), 
+                                 torch.full_like(weighted_loss, 1e6), 
+                                 weighted_loss))
     
+    # Final safety check
+    if torch.isnan(loss) or torch.isinf(loss):
+        return torch.tensor(1e6, device=pred.device, dtype=pred.dtype)
+        
     return loss
-
 
 
 class AttentionModule(nn.Module):
