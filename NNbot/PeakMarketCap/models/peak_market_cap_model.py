@@ -116,6 +116,10 @@ class PeakMarketCapPredictor(nn.Module):
         self._initialize_weights()
 
         self.to(self.device)
+        self.lstm_5s.flatten_parameters()
+        self.lstm_10s.flatten_parameters()
+        self.lstm_20s.flatten_parameters()
+        self.lstm_30s.flatten_parameters()
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -296,10 +300,13 @@ def train_peak_market_cap_model(train_loader, val_loader,
                 if (batch_idx + 1) % accumulation_steps == 0:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
+                    
                     scaler.step(optimizer)
+                    optimizer.step()  # Move before scheduler.step()
+                    scheduler.step()  # Move after optimizer.step()
                     scaler.update()
-                    scheduler.step()
                     optimizer.zero_grad()
+                    
                     ema.update_parameters(peak_market_cap_model)
             else:
                 output = peak_market_cap_model(
@@ -319,6 +326,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     optimizer.step()
                     scheduler.step()
                     optimizer.zero_grad()
+                    
                     ema.update_parameters(peak_market_cap_model)
             
             train_loss += loss.item() * accumulation_steps
