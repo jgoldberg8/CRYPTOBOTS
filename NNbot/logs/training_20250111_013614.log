@@ -1,0 +1,33 @@
+2025-01-11 01:36:14,407 - INFO - Starting training pipeline
+2025-01-11 01:36:14,407 - INFO - Using device: cpu
+2025-01-11 01:36:14,407 - INFO - Loading data...
+2025-01-11 01:36:19,927 - INFO - Data loaded and cleaned. Shape: (518, 4351)
+2025-01-11 01:36:20,230 - INFO - Train set size: 414, Validation set size: 104
+2025-01-11 01:37:05,248 - INFO - Data loaders created
+2025-01-11 01:37:05,455 - INFO - Model initialized
+2025-01-11 01:37:05,455 - INFO - Starting model training...
+2025-01-11 01:37:15,570 - ERROR - Error during training: view(): argument 'size' failed to unpack the object at pos 3 with error "type must be tuple of ints,but got float"
+Traceback (most recent call last):
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 501, in main
+    model, training_stats, best_val_loss = train_model(
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 316, in train_model
+    mean, log_var = model(batch)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 200, in forward
+    processed = self.granularity_processors[granularity](features, lengths)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 96, in forward
+    att_out, _ = self.attention(conv_out)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\jegol\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\site-packages\torch\nn\modules\module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\jegol\CryptoProjects\BOTGITREPO\CRYPTOBOTS\NNbot\TimeToPeak\models\time_to_peak_model.py", line 45, in forward
+    q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+TypeError: view(): argument 'size' failed to unpack the object at pos 3 with error "type must be tuple of ints,but got float"

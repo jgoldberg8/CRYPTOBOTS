@@ -1,0 +1,15 @@
+{"time":"2025-01-11T01:37:13.3182998-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.2","symlink path":"C:\\Users\\jegol\\CryptoProjects\\BOTGITREPO\\CRYPTOBOTS\\NNbot\\wandb\\run-20250111_013712-ed9jds1g\\logs\\debug-core.log"}
+{"time":"2025-01-11T01:37:13.4912293-05:00","level":"INFO","msg":"created new stream","id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:13.4922905-05:00","level":"INFO","msg":"stream: started","id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:13.4928158-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:13.4922905-05:00","level":"INFO","msg":"handler: started","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:13.4928158-05:00","level":"INFO","msg":"sender: started","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:14.3724119-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-11T01:37:15.6126364-05:00","level":"INFO","msg":"stream: closing","id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:15.6126364-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-11T01:37:15.6138399-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-11T01:37:16.1294379-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-11T01:37:16.280915-05:00","level":"INFO","msg":"handler: closed","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:16.280915-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:16.280915-05:00","level":"INFO","msg":"sender: closed","stream_id":"ed9jds1g"}
+{"time":"2025-01-11T01:37:16.290316-05:00","level":"INFO","msg":"stream: closed","id":"ed9jds1g"}

@@ -97,7 +97,7 @@ class HitPeakBefore30Predictor(nn.Module):
             nn.Sigmoid()
         )
 
-        # Binary classification head
+        # Binary classification head (REMOVED SIGMOID)
         self.binary_head = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
             nn.BatchNorm1d(hidden_size),
@@ -107,8 +107,7 @@ class HitPeakBefore30Predictor(nn.Module):
             nn.BatchNorm1d(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_size // 2, 1),  # Single output for binary classification
-            nn.Sigmoid()  # Sigmoid to get probability
+            nn.Linear(hidden_size // 2, 1)  # Removed Sigmoid activation
         )
 
         # Initialize weights
@@ -161,12 +160,10 @@ class HitPeakBefore30Predictor(nn.Module):
             global_features
         ], dim=1)
         
-        # Binary classification output
+        # Binary classification output (raw logits)
         binary_output = self.binary_head(combined_features)
         
         return binary_output
-    
-
 
 
 def train_hit_peak_before_30_model(train_loader, val_loader, 
@@ -184,7 +181,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
     ).to(device)
 
     # Initialize loss and optimizer
-    criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+    criterion = nn.BCEWithLogitsLoss()  # CHANGED: Use BCEWithLogitsLoss instead of BCELoss
     optimizer = optim.AdamW(
         hit_peak_before_30_model.parameters(),
         lr=learning_rate,
@@ -233,7 +230,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
             
             if use_amp:
                 with torch.cuda.amp.autocast():
-                    # Predict binary outcome
+                    # Predict binary outcome (raw logits)
                     binary_pred = hit_peak_before_30_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'],
@@ -249,7 +246,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                # Predict binary outcome
+                # Predict binary outcome (raw logits)
                 binary_pred = hit_peak_before_30_model(
                     batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                     batch['global_features'],
@@ -290,7 +287,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
             for batch in val_loader:
                 batch = {k: v.to(device) for k, v in batch.items()}
                 
-                # Predict binary outcome
+                # Predict binary outcome (raw logits)
                 binary_pred = hit_peak_before_30_model(
                     batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                     batch['global_features'],
@@ -303,7 +300,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
                 val_loss += loss.item()
                 
                 # Calculate metrics
-                pred_binary = (binary_pred.squeeze() > 0.5).float()
+                pred_binary = (torch.sigmoid(binary_pred.squeeze()) > 0.5).float()
                 total_correct += (pred_binary == targets).float().sum()
                 total_samples += targets.size(0)
                 
@@ -359,15 +356,6 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
     hit_peak_before_30_model.load_state_dict(checkpoint['model_state_dict'])
     
     return hit_peak_before_30_model, best_val_loss, metrics_history    
-
-
-
-
-
-
-
-
-
 
 
 def main_hit_peak_before_30(

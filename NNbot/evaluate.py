@@ -17,7 +17,7 @@ from TimeToPeak.models.time_to_peak_model import TimeToPeakPredictor
 from global_utilities import add_data_quality_features, clean_dataset_for_time
 
 
-from token_dataset import TokenDataset
+from PeakMarketCap.models.token_dataset import TokenDataset
 from train_models import clean_dataset
 
 
