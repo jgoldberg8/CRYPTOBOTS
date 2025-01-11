@@ -114,7 +114,7 @@ def prepare_data(sample_size=300, batch_size=64):
     df = add_data_quality_features(df)
     
     # Use new sampling strategy
-    df = create_representative_subset(df, sample_size=sample_size)
+    #df = create_representative_subset(df, sample_size=sample_size)
     
     # Split data
     train_df, val_df = train_val_split(df)
@@ -149,7 +149,7 @@ def objective(trial):
     print("="*50)
     
     # Sample size and batch size tuning
-    sample_size = trial.suggest_categorical('sample_size', [300, 400, 500])
+    #sample_size = trial.suggest_categorical('sample_size', [300, 400, 500])
     batch_size = trial.suggest_categorical('batch_size', [32, 64, 96, 128])
     
     # Architecture parameters - optimized for market cap prediction
@@ -169,7 +169,7 @@ def objective(trial):
     underprediction_penalty = trial.suggest_float('underprediction_penalty', 2.0, 6.0)
     
     print("\nChosen hyperparameters for this trial:")
-    print(f"Sample Size: {sample_size}")
+    #print(f"Sample Size: {sample_size}")
     print(f"Batch Size: {batch_size}")
     print(f"Hidden Size: {hidden_size}")
     print(f"Number of Layers: {num_layers}")
@@ -183,7 +183,7 @@ def objective(trial):
     
     try:
         train_loader, val_loader = prepare_data(
-            sample_size=sample_size,
+           # sample_size=sample_size,
             batch_size=batch_size
         )
         
