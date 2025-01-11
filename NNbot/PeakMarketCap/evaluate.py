@@ -15,7 +15,7 @@ import torch
 
 from PeakMarketCap.models.peak_market_cap_model import PeakMarketCapPredictor
 from utils.add_data_quality_features import add_data_quality_features
-from token_dataset import TokenDataset
+from PeakMarketCap.models.token_dataset import TokenDataset
 from torch.utils.data import DataLoader
 
 

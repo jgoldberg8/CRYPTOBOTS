@@ -10,13 +10,19 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from contextlib import nullcontext
 
-from PeakMarketCap.models.model_utilities import clean_dataset, custom_market_cap_loss
+from PeakMarketCap.models.model_utilities import AttentionModule, clean_dataset, custom_market_cap_loss
 
-from token_dataset import TokenDataset
+from PeakMarketCap.models.token_dataset import TokenDataset
 from utils.train_val_split import train_val_split
 from utils.add_data_quality_features import add_data_quality_features
-from utils.attention_module import AttentionModule
 from utils.early_stopping import EarlyStopping
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from torch.utils.data import WeightedRandomSampler
+import torch.cuda.amp as amp
+
+
+
+
 
 
 class PeakMarketCapPredictor(nn.Module):
@@ -180,17 +186,30 @@ class PeakMarketCapPredictor(nn.Module):
 
 
 def train_peak_market_cap_model(train_loader, val_loader, 
-                               num_epochs=200, 
-                               learning_rate=0.0023451158221575105, 
-                               weight_decay= 0.0023451158221575105, 
-                               hidden_size=512,
-                               num_layers=4,
-                               dropout_rate=0.45765036200255627,
-                               patience=34, 
-                               min_delta=7.634071592224352e-05,
-                               underprediction_penalty=2.0246081078434557):
+                               num_epochs=200,
+                               # Architecture parameters 
+                               hidden_size=384,  # Balanced for feature complexity
+                               num_layers=4,     # Keep 4 for sequence length
+                               dropout_rate=0.45, # Higher due to feature richness
+                               
+                               # Optimization parameters
+                               learning_rate=0.001,  # Conservative given feature scale
+                               weight_decay=2e-5,    # Increased for regularization
+                               
+                               # Training dynamics
+                               batch_size=32,        # Smaller for better gradient estimates
+                               accumulation_steps=4,  # Effective batch size = 32 * 4 = 128
+                               
+                               # Early stopping
+                               patience=25,          # Reduced from 34
+                               min_delta=1e-4,       # Increased due to high variance
+                               
+                               # Loss function
+                               underprediction_penalty=3.5,  # Increased due to market cap distribution
+                               scale_factor=100):
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
+    
     # Initialize model
     input_size = 11
     peak_market_cap_model = PeakMarketCapPredictor(
@@ -208,35 +227,40 @@ def train_peak_market_cap_model(train_loader, val_loader,
         weight_decay=weight_decay
     )
 
-    # Learning rate scheduler with longer cycle
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    # Setup gradient accumulation
+    accumulation_steps = 4
+    
+    # Setup learning rate scheduler
+    scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
-        T_0=50,  # Increased from 20
-        T_mult=2,
-        eta_min=1e-6
+        max_lr=learning_rate,
+        epochs=num_epochs,
+        steps_per_epoch=len(train_loader)//accumulation_steps
     )
 
-    # Early stopping with more patience
+    # Initialize EMA model
+    ema = torch.optim.swa_utils.AveragedModel(peak_market_cap_model)
+    
+    # Early stopping
     early_stopping = EarlyStopping(patience=patience, min_delta=min_delta)
     best_val_loss = float('inf')
     
     # Initialize AMP
-    use_amp = False
-    scaler = None
+    use_amp = torch.cuda.is_available()
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     for epoch in range(num_epochs):
         # Training phase
         peak_market_cap_model.train()
         train_loss = 0.0
         num_batches = len(train_loader)
+        optimizer.zero_grad()  # Zero gradients at start of epoch
         
         for batch_idx, batch in enumerate(train_loader):
             batch = {k: v.to(device) for k, v in batch.items()}
             
-            optimizer.zero_grad()
-            
             if use_amp:
-                with torch.cuda.amp.autocast('cuda'):
+                with torch.cuda.amp.autocast():
                     output = peak_market_cap_model(
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'], batch['quality_features']
@@ -244,14 +268,21 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     loss = custom_market_cap_loss(
                         output, 
                         batch['targets'][:, 0].unsqueeze(1),
-                        underprediction_penalty
+                        underprediction_penalty,
+                        scale_factor=scale_factor
                     )
+                    loss = loss / accumulation_steps
                 
                 scaler.scale(loss).backward()
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
-                scaler.step(optimizer)
-                scaler.update()
+                
+                if (batch_idx + 1) % accumulation_steps == 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
+                    scheduler.step()
+                    optimizer.zero_grad()
+                    ema.update_parameters(peak_market_cap_model)
             else:
                 output = peak_market_cap_model(
                     batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
@@ -262,17 +293,22 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     batch['targets'][:, 0].unsqueeze(1),
                     underprediction_penalty
                 )
-                
+                loss = loss / accumulation_steps
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
-                optimizer.step()
+                
+                if (batch_idx + 1) % accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+                    ema.update_parameters(peak_market_cap_model)
             
-            train_loss += loss.item()
+            train_loss += loss.item() * accumulation_steps
             
             # Print batch progress
             if (batch_idx + 1) % 10 == 0:
                 print(f'Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx+1}/{num_batches}], '
-                      f'Loss: {loss.item():.4f}')
+                      f'Loss: {loss.item() * accumulation_steps:.4f}')
         
         train_loss /= num_batches
 
@@ -285,7 +321,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
             for batch in val_loader:
                 batch = {k: v.to(device) for k, v in batch.items()}
                 
-                output = peak_market_cap_model(
+                output = ema.module(  # Use EMA model for validation
                     batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                     batch['global_features'], batch['quality_features']
                 )
@@ -297,7 +333,6 @@ def train_peak_market_cap_model(train_loader, val_loader,
                 val_loss += loss.item()
 
         val_loss /= val_batches
-        scheduler.step()
 
         print(f'Epoch {epoch+1}: Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, '
               f'LR: {scheduler.get_last_lr()[0]:.6f}')
@@ -307,11 +342,12 @@ def train_peak_market_cap_model(train_loader, val_loader,
             best_val_loss = val_loss
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': peak_market_cap_model.state_dict(),
+                'model_state_dict': ema.module.state_dict(),  # Save EMA model state
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
+                'scaler_state_dict': scaler.state_dict() if scaler else None,
                 'best_val_loss': best_val_loss,
-                'underprediction_penalty': underprediction_penalty,  # Save the penalty value
+                'underprediction_penalty': underprediction_penalty,
             }, 'best_peak_market_cap_model.pth')
 
         # Early stopping
@@ -331,23 +367,12 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     print(f"MKL Enabled: {torch.backends.mkl.is_available()}")
-    print(f"MKL-DNN Enabled: {torch.backends.mkldnn.is_available()}") 
-    print(f"Using device: {device}")  
+    print(f"MKL-DNN Enabled: {torch.backends.mkldnn.is_available()}")
     
     # Load and preprocess data
-    # Load and preprocess data
-    # df_07 = pd.read_csv('data/testData.csv')
-    # df_07 = clean_dataset(df_07)
-    # df_07 = add_data_quality_features(df_07)
-
-    # df_08 = pd.read_csv('data/token_data_2025-01-08.csv')
-    # df_08 = clean_dataset(df_08)
-    # df_08 = add_data_quality_features(df_08)
     df = pd.read_csv('data/token-data.csv')
     df = clean_dataset(df)
     df = add_data_quality_features(df)
-
-    # df = pd.concat([df_07, df_08], ignore_index=True)
 
     # Split data using stratified sampling
     train_df, val_df = train_val_split(df)
@@ -359,10 +384,26 @@ def main():
         'target': train_dataset_peak.target_scaler
     })
 
+    # Calculate sample weights for training data
+    weights = train_dataset_peak._calculate_sample_weights(train_df)
+    sampler = WeightedRandomSampler(weights, len(weights))
 
-    train_loader_peak = DataLoader(train_dataset_peak, batch_size=64, shuffle=True)
-    val_loader_peak = DataLoader(val_dataset_peak, batch_size=64)
-
+    # Create data loaders with weighted sampling for training
+    train_loader_peak = DataLoader(
+        train_dataset_peak, 
+        batch_size=32, 
+        sampler=sampler,
+        pin_memory=True,
+        num_workers=2
+    )
+    
+    val_loader_peak = DataLoader(
+        val_dataset_peak, 
+        batch_size=32,
+        shuffle=False,
+        pin_memory=True,
+        num_workers=2
+    )
 
     results = {}
 
@@ -374,6 +415,33 @@ def main():
         results['peak_market_cap_model'] = peak_market_cap_model
         results['peak_market_cap_val_loss'] = val_loss
         
+        # Calculate and print final metrics
+        peak_market_cap_model.eval()
+        all_predictions = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for batch in val_loader_peak:
+                batch = {k: v.to(device) for k, v in batch.items()}
+                predictions = peak_market_cap_model(
+                    batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
+                    batch['global_features'], batch['quality_features']
+                )
+                all_predictions.extend(predictions.cpu().numpy())
+                all_targets.extend(batch['targets'].cpu().numpy())
+        
+        predictions = np.array(all_predictions)
+        targets = np.array(all_targets)
+        
+        # Calculate metrics
+        mse = mean_squared_error(targets, predictions)
+        mae = mean_absolute_error(targets, predictions)
+        r2 = r2_score(targets, predictions)
+        
+        print("\nFinal Model Performance:")
+        print(f"Mean Squared Error: {mse:.4f}")
+        print(f"Mean Absolute Error: {mae:.4f}")
+        print(f"R² Score: {r2:.4f}")
         
         return results
             
