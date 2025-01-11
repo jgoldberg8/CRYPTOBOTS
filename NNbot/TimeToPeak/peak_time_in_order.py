@@ -21,6 +21,6 @@ with open(output_file_path, 'w') as outfile:
     
     # Write each row's details
     for index, row in sorted_df.iterrows():
-        outfile.write(f"{row['mint'].ljust(45)} {row['time_to_peak']}\n")
+        outfile.write(f"{row['mint'].ljust(45)} {row['time_to_peak']}    {row['peak_market_cap']}\n")
 
 print("Sorting complete. Results written to 'time_to_peak_sorted.txt'")

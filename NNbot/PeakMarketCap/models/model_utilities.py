@@ -78,7 +78,7 @@ def clean_dataset(df):
 
 
 
-def custom_market_cap_loss(pred, target, underprediction_penalty=3.0):
+def custom_market_cap_loss(pred, target, underprediction_penalty=3.5):
     """
     Asymmetric loss function with tunable penalty for underprediction
     

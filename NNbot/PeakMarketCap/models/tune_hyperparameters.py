@@ -150,11 +150,11 @@ def objective(trial):
     
     # Sample size and batch size tuning
     sample_size = trial.suggest_categorical('sample_size', [300, 400, 500])
-    batch_size = trial.suggest_categorical('batch_size', [64, 96, 128])
+    batch_size = trial.suggest_categorical('batch_size', [32, 64, 96, 128])
     
     # Architecture parameters - optimized for market cap prediction
-    hidden_size = trial.suggest_categorical('hidden_size', [512, 768, 1024])
-    num_layers = trial.suggest_int('num_layers', 3, 5)
+    hidden_size = trial.suggest_categorical('hidden_size', [256, 512, 768, 1024])
+    num_layers = trial.suggest_int('num_layers', [3, 4, 5])
     dropout_rate = trial.suggest_float('dropout_rate', 0.3, 0.5)
     
     # Optimization parameters
@@ -162,11 +162,11 @@ def objective(trial):
     weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-4, log=True)
     
     # Early stopping parameters
-    patience = trial.suggest_int('patience', 20, 40)
+    patience = trial.suggest_int('patience', 15, 40)
     min_delta = trial.suggest_float('min_delta', 1e-5, 1e-3, log=True)
     
     # Underprediction penalty
-    underprediction_penalty = trial.suggest_float('underprediction_penalty', 2.0, 5.0)
+    underprediction_penalty = trial.suggest_float('underprediction_penalty', 2.0, 6.0)
     
     print("\nChosen hyperparameters for this trial:")
     print(f"Sample Size: {sample_size}")
