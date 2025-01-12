@@ -1,3 +1,4 @@
+import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,6 +16,7 @@ from tqdm import tqdm
 from TimeToPeak.datasets.time_token_dataset import MultiGranularTokenDataset
 from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.time_loss import PeakPredictionLoss
+warnings.filterwarnings('ignore')
 
 class FeatureExtractor(nn.Module):
     """Feature extraction module that processes multiple time granularities"""
