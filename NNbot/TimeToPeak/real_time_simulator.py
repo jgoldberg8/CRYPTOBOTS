@@ -13,7 +13,7 @@ from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.setup_logging import setup_logging
 
 class RealTimeDataSimulator:
-    def __init__(self, data_df, window_size=60, step_size=5):
+    def __init__(self, data_df, window_size=60, step_size=5, model_path='checkpoints/best_model.pt'):
         """
         Simulates real-time data arrival from historical data.
         
@@ -26,6 +26,10 @@ class RealTimeDataSimulator:
         self.window_size = window_size
         self.step_size = step_size
         self.current_time = None
+        
+        # Load scalers from model artifact
+        checkpoint = torch.load(model_path)
+        self.scalers = checkpoint['scaler']
         
         # Base features that we want to capture for each granularity
         self.base_features = [
@@ -125,7 +129,7 @@ class RealTimeDataSimulator:
             'window_data': window_data
         }
 
-def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
+def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5, model_path='checkpoints/best_model.pt'):
     """
     Evaluate model with a single prediction per token and inverse transform predictions
     """
@@ -146,7 +150,7 @@ def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
             token_data = data_df[data_df['mint'] == token].sort_values('creation_time')
             
             # Create simulator for this token's data
-            simulator = RealTimeDataSimulator(token_data, window_size, step_size)
+            simulator = RealTimeDataSimulator(token_data, window_size, step_size, model_path)
             
             # Get first batch only (initial prediction)
             batch = next(iter(simulator))
