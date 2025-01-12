@@ -21,15 +21,15 @@ class RealTimeDataSimulator:
             data_df (pd.DataFrame): Full historical dataset
             window_size (int): Size of the sliding window in seconds
             step_size (int): How many seconds to advance in each step
+            model_path (str): Path to the model checkpoint
         """
         self.data = data_df.sort_values('creation_time')
         self.window_size = window_size
         self.step_size = step_size
         self.current_time = None
         
-        # Load scalers from model artifact
-        checkpoint = torch.load(model_path)
-        self.scalers = checkpoint['scalers']
+        # Try to load scalers from various possible locations and keys
+        self.scalers = self._load_scalers(model_path)
         
         # Base features that we want to capture for each granularity
         self.base_features = [
@@ -46,6 +46,44 @@ class RealTimeDataSimulator:
             'unique_wallets'
         ]
         self.reset()
+    def _load_scalers(self, model_path):
+        """
+        Load scalers from checkpoint, handling different possible locations and keys.
+        """
+        try:
+            # First try loading the direct checkpoint
+            checkpoint = torch.load(model_path, map_location='cpu')
+            
+            # Check various possible keys for scalers
+            if 'scalers' in checkpoint:
+                return checkpoint['scalers']
+            elif 'scaler' in checkpoint:
+                return checkpoint['scaler']
+            
+            # If not found, try looking for model_artifacts.pt in the same directory
+            model_dir = os.path.dirname(model_path)
+            artifacts_path = os.path.join(model_dir, 'model_artifacts.pt')
+            
+            if os.path.exists(artifacts_path):
+                artifacts = torch.load(artifacts_path, map_location='cpu')
+                if 'scalers' in artifacts:
+                    return artifacts['scalers']
+                elif 'scaler' in artifacts:
+                    return artifacts['scaler']
+            
+            # If still not found, try loading from scalers.pth
+            scalers_path = os.path.join(model_dir, 'scalers.pth')
+            if os.path.exists(scalers_path):
+                return torch.load(scalers_path, map_location='cpu')
+            
+            raise KeyError("Could not find scalers in any of the expected locations")
+            
+        except Exception as e:
+            raise RuntimeError(f"Error loading scalers from {model_path}: {str(e)}\n"
+                             f"Please ensure the model checkpoint contains the scalers "
+                             f"under either 'scalers' or 'scaler' key, or in a separate "
+                             f"scalers.pth file.") from e
+        
     
     def reset(self):
         """Reset simulation to start"""
@@ -63,40 +101,38 @@ class RealTimeDataSimulator:
         return window_data
     
     def _process_window(self, window_data):
-      """Process window data to match model expectations"""
-      features = {}
-      granularities = ['5s', '10s', '20s', '30s', '60s']
-      
-      # Process each granularity
-      for granularity in granularities:
-          gran_size = int(granularity.replace('s', ''))
-          num_steps = len(self.base_features)
-          
-          # Create feature matrix for this granularity
-          # [batch_size, features] -> will be expanded in network as needed
-          feature_matrix = np.zeros((1, num_steps))
-          
-          # Fill in available features
-          for i, feature in enumerate(self.base_features):
-              col_name = f"{feature}_0to{gran_size}s"
-              if col_name in window_data.columns and len(window_data) > 0:
-                  feature_matrix[0, i] = window_data[col_name].iloc[-1]
-          
-          features[f'features_{granularity}'] = feature_matrix
-          features[f'length_{granularity}'] = 1 if len(window_data) > 0 else 1
-      
-      # Process global features [batch_size, features]
-      global_features = np.array([
-          window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
-          window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-          window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-          window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
-          len(window_data) / self.window_size  # Activity density
-      ]).reshape(1, -1)
-      
-      features['global_features'] = global_features
-      
-      return features
+        """Process window data to match model expectations"""
+        features = {}
+        granularities = ['5s', '10s', '20s', '30s', '60s']
+        
+        # Process each granularity
+        for granularity in granularities:
+            gran_size = int(granularity.replace('s', ''))
+            num_steps = len(self.base_features)
+            
+            # Create feature matrix for this granularity
+            feature_matrix = np.zeros((1, num_steps))
+            
+            # Fill in available features
+            for i, feature in enumerate(self.base_features):
+                col_name = f"{feature}_0to{gran_size}s"
+                if col_name in window_data.columns and len(window_data) > 0:
+                    feature_matrix[0, i] = window_data[col_name].iloc[-1]
+            
+            features[f'features_{granularity}'] = feature_matrix
+            features[f'length_{granularity}'] = 1 if len(window_data) > 0 else 1
+        
+        # Process global features
+        global_features = np.array([
+            window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
+            window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+            window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+            window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
+            len(window_data) / self.window_size  # Activity density
+        ]).reshape(1, -1)
+        
+        features['global_features'] = global_features
+        return features
 
 
     def __iter__(self):
