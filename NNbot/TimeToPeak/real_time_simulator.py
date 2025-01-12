@@ -318,7 +318,7 @@ def main():
     
     # Configuration
     config = {
-        'model_path': 'models/best_model.pt',
+        'model_path': 'checkpoints/best_model.pt',
         'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
