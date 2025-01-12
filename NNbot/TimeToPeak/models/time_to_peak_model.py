@@ -14,7 +14,7 @@ import logging
 import wandb
 
 from TimeToPeak.datasets.time_token_dataset import create_multi_granular_loaders
-from TimeToPeak.utils import save_model_artifacts
+from TimeToPeak.utils.save_model_artifacts import save_model_artifacts
 from TimeToPeak.utils.setup_logging import setup_logging
 from TimeToPeak.utils.train_val_split import train_val_split
 from TimeToPeak.utils.time_loss import RealTimePeakLoss
