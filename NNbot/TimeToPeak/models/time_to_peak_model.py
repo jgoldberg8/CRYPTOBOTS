@@ -310,7 +310,7 @@ def train_model(model, train_loader, val_loader,
     )
     
     # Initialize automatic mixed precision
-    scaler = GradScaler()
+    scaler = torch.GradScaler()
     best_val_loss = float('inf')
     patience_counter = 0
     best_epoch_metrics = None
@@ -356,7 +356,7 @@ def train_model(model, train_loader, val_loader,
             optimizer.zero_grad()
             
             # Forward pass with automatic mixed precision
-            with autocast(device_type='cuda', enabled=True):
+            with torch.autocast(device_type='cuda', enabled=True):
                 mean, log_var, peak_detected, peak_prob = model(batch, detect_peaks=True)
                 target = batch['targets'].view(-1)
                 
