@@ -104,10 +104,10 @@ class MultiGranularTokenDataset(Dataset):
                 df[f'buy_pressure_momentum_{gran}'] = 0
 
         # Add data quality features
-        try:
-            df = add_data_quality_features(df)
-        except Exception as e:
-            print(f"Warning: Could not add data quality features: {e}")
+        # try:
+        #     df = add_data_quality_features(df)
+        # except Exception as e:
+        #     print(f"Warning: Could not add data quality features: {e}")
         
         return df
 
