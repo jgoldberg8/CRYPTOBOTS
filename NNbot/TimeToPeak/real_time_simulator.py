@@ -406,7 +406,7 @@ def main():
     # Configuration with updated paths
     config = {
         'model_path': os.path.join(project_root, 'TimeToPeak', 'Artifacts', 'best_model.pt'),
-        'data_path': os.path.join(project_root, 'data', 'time-data.csv'),
+        'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
         'evaluation_dir': os.path.join(project_root, 'TimeToPeak', 'evaluation')
