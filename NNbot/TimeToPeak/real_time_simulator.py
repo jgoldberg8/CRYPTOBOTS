@@ -47,44 +47,43 @@ class RealTimeDataSimulator:
         ]
         self.reset()
     def _load_scalers(self, model_path):
-        """
-        Load scalers from checkpoint, handling different possible locations and keys.
-        """
-        try:
-            # First try loading the direct checkpoint
-            checkpoint = torch.load(model_path, map_location='cpu')
-            
-            # Check various possible keys for scalers
-            if 'scalers' in checkpoint:
-                return checkpoint['scalers']
-            elif 'scaler' in checkpoint:
-                return checkpoint['scaler']
-            
-            # If not found, try looking for model_artifacts.pt in the same directory
-            model_dir = os.path.dirname(model_path)
-            artifacts_path = "/TimeToPeak/artifacts/model_artifacts.pt"
-            
-            if os.path.exists(artifacts_path):
-                artifacts = torch.load(artifacts_path, map_location='cpu')
-                if 'scalers' in artifacts:
-                    return artifacts['scalers']
-                elif 'scaler' in artifacts:
-                    return artifacts['scaler']
-            
-            # If still not found, try loading from scalers.pth
-            scalers_path = os.path.join(model_dir, 'scalers.pth')
-            if os.path.exists(scalers_path):
-                return torch.load(scalers_path, map_location='cpu')
-            
-            raise KeyError("Could not find scalers in any of the expected locations")
-            
-        except Exception as e:
-            raise RuntimeError(f"Error loading scalers from {model_path}: {str(e)}\n"
-                             f"Please ensure the model checkpoint contains the scalers "
-                             f"under either 'scalers' or 'scaler' key, or in a separate "
-                             f"scalers.pth file.") from e
-        
-    
+      """
+      Load scalers from checkpoint, handling different possible locations and keys.
+      """
+      try:
+          # First try loading the direct checkpoint
+          checkpoint = torch.load(model_path, map_location='cpu')
+          
+          # Check various possible keys for scalers
+          if 'scalers' in checkpoint:
+              return checkpoint['scalers']
+          elif 'scaler' in checkpoint:
+              return checkpoint['scaler']
+          
+          # If not found, try looking for model_artifacts.pt in the artifacts directory
+          project_root = os.path.dirname(os.path.dirname(os.path.dirname(model_path)))
+          artifacts_path = os.path.join(project_root, 'TimeToPeak', 'Artifacts', 'model_artifacts.pt')
+          
+          if os.path.exists(artifacts_path):
+              artifacts = torch.load(artifacts_path, map_location='cpu')
+              if 'scalers' in artifacts:
+                  return artifacts['scalers']
+              elif 'scaler' in artifacts:
+                  return artifacts['scaler']
+          
+          # If still not found, try loading from scalers.pth in the same directory as the model
+          scalers_path = os.path.join(os.path.dirname(model_path), 'scalers.pth')
+          if os.path.exists(scalers_path):
+              return torch.load(scalers_path, map_location='cpu')
+          
+          raise KeyError("Could not find scalers in any of the expected locations")
+          
+      except Exception as e:
+          raise RuntimeError(f"Error loading scalers from {model_path}: {str(e)}\n"
+                          f"Please ensure the model checkpoint contains the scalers "
+                          f"under either 'scalers' or 'scaler' key, or in a separate "
+                          f"scalers.pth file.") from e
+      
     def reset(self):
         """Reset simulation to start"""
         self.current_time = self.data['creation_time'].min()
@@ -400,14 +399,17 @@ def main():
     logger = setup_logging()
     logger.info("Starting real-time evaluation pipeline")
     
-    # Configuration
+    # Get project root directory (2 levels up from current file)
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    
+    # Configuration with updated paths
     config = {
-        'model_path': 'checkpoints/best_model.pt',
-        'data_path': 'data/time-data.csv',
+        'model_path': os.path.join(project_root, 'TimeToPeak', 'Artifacts', 'best_model.pt'),
+        'data_path': os.path.join(project_root, 'data', 'time-data.csv'),
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
-        'evaluation_dir': current_dir
+        'evaluation_dir': os.path.join(project_root, 'TimeToPeak', 'evaluation')
     }
     
     try:
@@ -426,9 +428,9 @@ def main():
         # Update config with model settings
         config.update(model_config)
         
-        # Create evaluation directory
+        # Create evaluation directory with timestamp
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_dir = f"{config['evaluation_dir']}/evaluation"
+        eval_dir = os.path.join(config['evaluation_dir'], f'run_{timestamp}')
         os.makedirs(eval_dir, exist_ok=True)
         
         # Evaluate model
@@ -437,7 +439,8 @@ def main():
             model=model,
             data_df=df,
             window_size=config['window_size'],
-            step_size=config['step_size']
+            step_size=config['step_size'],
+            model_path=config['model_path']  # Pass the correct model path
         )
         
         logger.info("Analyzing prediction transitions...")
@@ -457,7 +460,7 @@ def main():
         logger.info(f"Average Prediction Change: {analysis['avg_prediction_change']:.4f}")
         
         # Save configuration
-        with open(f"{eval_dir}/config.json", 'w') as f:
+        with open(os.path.join(eval_dir, 'config.json'), 'w') as f:
             json.dump(config, f, indent=4)
         
         logger.info(f"Evaluation results saved to {eval_dir}")
