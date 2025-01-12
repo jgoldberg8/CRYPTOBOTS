@@ -266,6 +266,26 @@ def analyze_prediction_transitions(metrics):
 
 
 
+
+def load_model_and_config(model_path):
+    """Load trained model and its configuration"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    checkpoint = torch.load(model_path, map_location=device)
+    
+    config = checkpoint.get('config', {})
+    config.setdefault('input_size', 11)
+    config.setdefault('hidden_size', 256)
+    config.setdefault('window_size', 60)
+    
+    model = RealTimePeakPredictor(
+        input_size=config['input_size'],
+        hidden_size=config['hidden_size'],
+        window_size=config['window_size']
+    ).to(device)
+    
+    model.load_state_dict(checkpoint['model_state_dict'])
+    return model, config
+
 def save_evaluation_results(metrics, analysis, save_dir):
     """Save evaluation results and figures"""
     # Create results directory
