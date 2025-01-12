@@ -251,6 +251,9 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                     batch['sample_weights'],
                     batch['mask']
                 )
+            if not loss.requires_grad:
+                print("Warning: Loss does not require gradient")
+                loss = loss.clone().requires_grad_(True)
             
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
