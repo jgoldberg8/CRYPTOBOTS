@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import warnings
 from matplotlib import pyplot as plt
 import torch
 import numpy as np
@@ -11,6 +12,7 @@ from tqdm import tqdm
 from TimeToPeak.models.time_to_peak_model import RealTimePeakPredictor
 from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.setup_logging import setup_logging
+warnings.filterwarnings('ignore')
 
 class RealTimeDataSimulator:
     def __init__(self, data_df, window_size=60, step_size=5, model_path='checkpoints/best_model.pt'):
