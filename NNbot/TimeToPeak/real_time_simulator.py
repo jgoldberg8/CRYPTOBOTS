@@ -127,7 +127,7 @@ class RealTimeDataSimulator:
 
 def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
     """
-    Evaluate model with a single prediction per token
+    Evaluate model with a single prediction per token and inverse transform predictions
     """
     device = next(model.parameters()).device
     model.eval()
@@ -160,12 +160,19 @@ def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
             # Get model predictions
             mean, log_var, peak_detected, peak_prob = model(features, detect_peaks=True)
             
+            # Get the raw prediction
+            scaled_prediction = mean.cpu().numpy()[0]
+            
+            # Inverse transform the prediction using the target scaler
+            raw_prediction = simulator.scalers['target'].inverse_transform([[scaled_prediction]])[0][0]
+            
             # Store results
-            predictions.append(mean.cpu().numpy()[0])
+            predictions.append(raw_prediction)
             peak_detections.append(peak_detected.cpu().numpy()[0])
             confidences.append(torch.exp(-log_var).cpu().numpy()[0])
             
             if batch['actual_peak'] is not None:
+                # Store raw (unscaled) actual value
                 actuals.append(batch['actual_peak'])
             else:
                 actuals.append(None)
