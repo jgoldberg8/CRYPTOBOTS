@@ -179,7 +179,9 @@ def create_data_loaders(train_df, val_df, batch_size=None, num_workers=4):
     
     # Find optimal batch size if not provided
     if batch_size is None:
-        batch_size = find_optimal_batch_size(train_dataset)
+        
+        
+        batch_size = 32#find_optimal_batch_size(train_dataset)
         print(f"Using batch size: {batch_size}")
     
     # Create data loaders
@@ -347,7 +349,7 @@ def main():
         # Initialize model
         logger.info("Initializing model...")
         model = RealTimePeakPredictor(
-            input_size=17,
+            input_size=11,
             hidden_size=256,
             num_granularities=4,
             dropout_rate=0.4
@@ -368,7 +370,7 @@ def main():
         training_info = {
             'best_val_loss': float(best_val_loss),
             'model_config': {
-                'input_size': 17,
+                'input_size': 11,
                 'hidden_size': 256,
                 'num_granularities': 4,
                 'dropout_rate': 0.4
