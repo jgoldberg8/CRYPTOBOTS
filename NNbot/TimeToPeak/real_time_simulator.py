@@ -266,43 +266,39 @@ def analyze_prediction_transitions(metrics):
 
 
 
-
-def load_model_and_config(model_path):
-    """Load trained model and its configuration"""
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint = torch.load(model_path, map_location=device)
-    
-    config = checkpoint.get('config', {})
-    config.setdefault('input_size', 11)
-    config.setdefault('hidden_size', 256)
-    config.setdefault('window_size', 60)
-    
-    model = RealTimePeakPredictor(
-        input_size=config['input_size'],
-        hidden_size=config['hidden_size'],
-        window_size=config['window_size']
-    ).to(device)
-    
-    model.load_state_dict(checkpoint['model_state_dict'])
-    return model, config
-
 def save_evaluation_results(metrics, analysis, save_dir):
     """Save evaluation results and figures"""
     # Create results directory
     results_dir = Path(save_dir) / 'realtime_evaluation'
     results_dir.mkdir(parents=True, exist_ok=True)
     
+    # Convert numpy types to Python native types
+    def convert_to_native(obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, pd.Timestamp):
+            return obj.isoformat()
+        return obj
+    
     # Save metrics
-    metrics_to_save = {
-        k: v if not isinstance(v, (np.ndarray, pd.Timestamp)) else v.tolist()
-        for k, v in metrics.items()
-    }
+    metrics_to_save = {}
+    for k, v in metrics.items():
+        metrics_to_save[k] = convert_to_native(v)
+    
     with open(results_dir / 'metrics.json', 'w') as f:
-        json.dump(metrics_to_save, f, indent=4)
+        json.dump(metrics_to_save, f, indent=4, default=convert_to_native)
     
     # Save analysis
+    analysis_to_save = {}
+    for k, v in analysis.items():
+        analysis_to_save[k] = convert_to_native(v)
+        
     with open(results_dir / 'analysis.json', 'w') as f:
-        json.dump(analysis, f, indent=4)
+        json.dump(analysis_to_save, f, indent=4, default=convert_to_native)
     
     # Create and save visualizations
     fig = visualize_realtime_predictions(metrics)
