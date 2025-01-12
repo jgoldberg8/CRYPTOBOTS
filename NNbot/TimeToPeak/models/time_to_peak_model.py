@@ -181,7 +181,7 @@ def create_data_loaders(train_df, val_df, batch_size=None, num_workers=4):
     if batch_size is None:
         
         
-        batch_size = 32#find_optimal_batch_size(train_dataset)
+        batch_size = find_optimal_batch_size(train_dataset)
         print(f"Using batch size: {batch_size}")
     
     # Create data loaders
