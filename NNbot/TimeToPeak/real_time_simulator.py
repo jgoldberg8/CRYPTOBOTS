@@ -62,7 +62,7 @@ class RealTimeDataSimulator:
           
           # If not found, try looking for model_artifacts.pt in the artifacts directory
           project_root = os.path.dirname(os.path.dirname(os.path.dirname(model_path)))
-          artifacts_path = os.path.join(project_root, 'TimeToPeak', 'models', 'Artifacts', 'model_artifacts.pt')
+          artifacts_path = os.path.join(project_root, 'NNbot', 'TimeToPeak', 'models', 'Artifacts', 'model_artifacts.pt')
           
           if os.path.exists(artifacts_path):
               artifacts = torch.load(artifacts_path, map_location='cpu')
