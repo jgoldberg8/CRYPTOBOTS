@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import shutil
 import pandas as pd
@@ -22,6 +23,7 @@ from TimeToPeak.utils.clean_dataset import clean_dataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from training_config.training_config import get_training_config
 
 class CausalMultiGranularAttention(nn.Module):
     def __init__(self, hidden_size, num_heads=8, dropout_rate=0.1):
@@ -265,26 +267,36 @@ class RealTimePeakPredictor(nn.Module):
 
 
 def train_model(model, train_loader, val_loader,
-                num_epochs=200,
-                learning_rate=0.001,
-                weight_decay=0.01,
-                patience=15,
+                num_epochs=100,
+                learning_rate=0.0005,
+                weight_decay=0.02,
+                patience=10,
                 use_wandb=False,
                 project_name="time_to_peak",
                 checkpoint_dir="checkpoints"):
     """
-    Training function with fixed shape handling
+    Optimized training function with improved regularization and monitoring
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
-    criterion = RealTimePeakLoss()
+    # Initialize loss with optimized weights
+    criterion = RealTimePeakLoss(
+        alpha=0.2,    # Reduced uncertainty weight
+        beta=0.15,    # Reduced directional weight
+        gamma=0.1,    # Reduced overall regularization
+        peak_loss_weight=0.3  # Reduced peak detection weight
+    )
+    
+    # Optimizer with increased weight decay for better regularization
     optimizer = optim.AdamW(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=weight_decay
+        weight_decay=weight_decay,
+        betas=(0.9, 0.999)
     )
     
+    # Learning rate scheduler with gradual warmup
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=learning_rate,
@@ -298,10 +310,14 @@ def train_model(model, train_loader, val_loader,
     scaler = torch.GradScaler()
     best_val_loss = float('inf')
     patience_counter = 0
+    best_epoch_metrics = None
+    
     training_stats = {
         'train_losses': [],
         'val_losses': [],
         'learning_rates': [],
+        'train_mae': [],
+        'val_mae': [],
         'best_epoch': 0,
         'peak_detection_accuracy': []
     }
@@ -336,13 +352,9 @@ def train_model(model, train_loader, val_loader,
             optimizer.zero_grad()
             
             with torch.autocast(device_type='cuda', enabled=True):
-                # Forward pass with peak detection
                 mean, log_var, peak_detected, peak_prob = model(batch, detect_peaks=True)
-                
-                # Reshape target to match prediction shape
                 target = batch['targets'].view(-1)
                 
-                # Calculate loss with peak detection component
                 loss = criterion(
                     mean, 
                     log_var, 
@@ -351,7 +363,6 @@ def train_model(model, train_loader, val_loader,
                     peak_target=batch.get('peak_target')
                 )
                 
-                # Calculate metrics with consistent shapes
                 mse = F.mse_loss(mean.view(-1), target)
                 mae = F.l1_loss(mean.view(-1), target)
                 
@@ -359,15 +370,17 @@ def train_model(model, train_loader, val_loader,
                 train_metrics['mse'].append(mse.item())
                 train_metrics['mae'].append(mae.item())
                 
-                # Peak detection metrics if available
                 if 'peak_target' in batch:
                     peak_target = batch['peak_target'].view(-1)
                     peak_accuracy = ((peak_detected.view(-1) == peak_target).float().mean()).item()
                     train_metrics['peak_accuracy'].append(peak_accuracy)
             
             scaler.scale(loss).backward()
+            
+            # Gradient clipping to prevent exploding gradients
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
@@ -406,8 +419,8 @@ def train_model(model, train_loader, val_loader,
                     peak_target=batch.get('peak_target')
                 )
                 
-                mse = nn.MSELoss()(mean, batch['targets'])
-                mae = nn.L1Loss()(mean, batch['targets'])
+                mse = F.mse_loss(mean, batch['targets'])
+                mae = F.l1_loss(mean, batch['targets'])
                 
                 if 'peak_target' in batch:
                     peak_accuracy = ((peak_detected == batch['peak_target']).float().mean()).item()
@@ -431,6 +444,15 @@ def train_model(model, train_loader, val_loader,
         avg_val_loss = np.mean(val_losses)
         avg_val_metrics = {k: np.mean(v) for k, v in val_metrics.items() if len(v) > 0}
         
+        # Save metrics
+        training_stats['train_losses'].append(avg_train_loss)
+        training_stats['val_losses'].append(avg_val_loss)
+        training_stats['learning_rates'].append(scheduler.get_last_lr()[0])
+        training_stats['train_mae'].append(avg_train_metrics['mae'])
+        training_stats['val_mae'].append(avg_val_metrics['mae'])
+        if 'peak_accuracy' in avg_val_metrics:
+            training_stats['peak_detection_accuracy'].append(avg_val_metrics['peak_accuracy'])
+        
         if use_wandb:
             wandb_log = {
                 "train_loss": avg_train_loss,
@@ -441,14 +463,11 @@ def train_model(model, train_loader, val_loader,
                 "val_mae": avg_val_metrics['mae'],
                 "learning_rate": scheduler.get_last_lr()[0]
             }
-            
-            # Add peak detection metrics if available
             for metric in ['peak_accuracy', 'peak_precision', 'peak_recall']:
                 if metric in avg_train_metrics:
                     wandb_log[f"train_{metric}"] = avg_train_metrics[metric]
                 if metric in avg_val_metrics:
                     wandb_log[f"val_{metric}"] = avg_val_metrics[metric]
-            
             wandb.log(wandb_log)
         
         print(f"\nEpoch {epoch+1}/{num_epochs}")
@@ -458,35 +477,34 @@ def train_model(model, train_loader, val_loader,
             print(f"Train Peak Accuracy: {avg_train_metrics['peak_accuracy']:.4f}, "
                   f"Val Peak Accuracy: {avg_val_metrics['peak_accuracy']:.4f}")
         
-        # Save metrics
-        training_stats['train_losses'].append(avg_train_loss)
-        training_stats['val_losses'].append(avg_val_loss)
-        training_stats['learning_rates'].append(scheduler.get_last_lr()[0])
-        if 'peak_accuracy' in avg_val_metrics:
-            training_stats['peak_detection_accuracy'].append(avg_val_metrics['peak_accuracy'])
-        
         # Check for improvement
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            best_epoch_metrics = {
+                'epoch': epoch,
+                'train_metrics': avg_train_metrics,
+                'val_metrics': avg_val_metrics
+            }
             patience_counter = 0
             training_stats['best_epoch'] = epoch
             
-            # Save best model
+            # Save best model with all necessary artifacts
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
                 'loss': best_val_loss,
-                'training_stats': training_stats
+                'training_stats': training_stats,
+                'model_metrics': best_epoch_metrics
             }, f"{checkpoint_dir}/best_model.pt")
         else:
             patience_counter += 1
-        
-        # Early stopping check
-        if patience_counter >= patience:
-            print(f"\nEarly stopping triggered after {epoch + 1} epochs")
-            break
+            
+            # Early stopping check
+            if patience_counter >= patience:
+                print(f"\nEarly stopping triggered after {epoch + 1} epochs")
+                break
     
     # Load best model
     checkpoint = torch.load(f"{checkpoint_dir}/best_model.pt")
@@ -502,18 +520,17 @@ def main():
     logger = setup_logging()
     logger.info("Starting training pipeline")
     
-    config = {
-        'input_size': 11,
-        'hidden_size': 256,
-        'window_size': 60,
-        'val_size': 0.2,
-        'random_state': 42,
-        'use_wandb': True,
-        'project_name': 'time_to_peak'
-    }
+    # Get optimized config
+    config = get_training_config()
+    model_config = config['model']
+    training_config = config['training']
     
-    os.makedirs('checkpoints', exist_ok=True)
-    os.makedirs('models', exist_ok=True)
+    # Create directories
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    checkpoints_dir = os.path.join(project_root, 'TimeToPeak', 'checkpoints')
+    artifacts_dir = os.path.join(project_root, 'TimeToPeak', 'Artifacts')
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(artifacts_dir, exist_ok=True)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
@@ -521,29 +538,33 @@ def main():
     try:
         # Load and process data
         logger.info("Loading data...")
-        df = pd.read_csv('data/time-data.csv')
+        df = pd.read_csv(os.path.join(project_root, 'data', 'time-data.csv'))
         df = clean_dataset(df)
         logger.info(f"Data loaded and cleaned. Shape: {df.shape}")
         
         train_df, val_df = train_val_split(
             df,
-            val_size=config['val_size'],
-            random_state=config['random_state']
+            val_size=training_config['val_size'],
+            random_state=training_config['random_state']
         )
         logger.info(f"Train set size: {len(train_df)}, Validation set size: {len(val_df)}")
         
+        # Create data loaders with optimized batch size
         train_loader, val_loader = create_multi_granular_loaders(
             train_df,
             val_df,
-            batch_size=32
+            batch_size=training_config['batch_size']
         )
         logger.info("Data loaders created")
         
-        # Initialize real-time model
+        # Initialize model with optimized configuration
         model = RealTimePeakPredictor(
-            input_size=config['input_size'],
-            hidden_size=config['hidden_size'],
-            window_size=config['window_size']
+            input_size=model_config['input_size'],
+            hidden_size=model_config['hidden_size'],
+            window_size=model_config['window_size'],
+            num_heads=model_config['num_heads'],
+            num_gru_layers=model_config['num_gru_layers'],
+            dropout_rate=model_config['dropout_rate']
         ).to(device)
         logger.info("Model initialized")
         
@@ -553,36 +574,34 @@ def main():
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            use_wandb=config['use_wandb'],
-            project_name=config['project_name']
+            num_epochs=training_config['num_epochs'],
+            learning_rate=training_config['learning_rate'],
+            weight_decay=training_config['weight_decay'],
+            patience=training_config['patience'],
+            use_wandb=True,
+            project_name='time_to_peak',
+            checkpoint_dir=checkpoints_dir
         )
         logger.info(f"Training completed. Best validation loss: {best_val_loss:.4f}")
         
-        # Save model
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        artifacts_dir = os.path.join(current_dir, 'Artifacts')
-        os.makedirs(artifacts_dir, exist_ok=True)
+        # Save all model artifacts using the utility function
+        save_dir = save_model_artifacts(
+            model=model,
+            train_loader=train_loader,
+            training_stats=training_stats,
+            config=config,
+            save_dir=artifacts_dir,
+            checkpoint_dir=checkpoints_dir
+        )
         
-        torch.save({
-            'model_state_dict': model.state_dict(),
-            'config': config,
-            'training_stats': training_stats,
-            'best_val_loss': best_val_loss,
-            'scaler': train_loader.dataset.get_scalers()
-        }, f'{artifacts_dir}/model_artifacts.pt')
-        
-        shutil.copy2(f'{current_dir}/checkpoints/best_model.pt', f'{artifacts_dir}/best_model.pt')
-        
-        logger.info(f"Model artifacts saved to {artifacts_dir}")
+        logger.info(f"Model artifacts saved to {save_dir}")
         logger.info("Training pipeline completed successfully")
         
         return {
             'model': model,
             'training_stats': training_stats,
             'best_val_loss': best_val_loss,
-            'save_dir': artifacts_dir
+            'save_dir': save_dir
         }
         
     except Exception as e:
