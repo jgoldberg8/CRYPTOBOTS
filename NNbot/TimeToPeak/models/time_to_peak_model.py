@@ -273,7 +273,7 @@ def train_model(model, train_loader, val_loader,
                 patience=10,
                 use_wandb=False,
                 project_name="time_to_peak",
-                checkpoint_dir="checkpoints"):
+                checkpoint_dir='TimeToPeak/checkpoints'):
     """
     Optimized training function with improved regularization and monitoring
     """
