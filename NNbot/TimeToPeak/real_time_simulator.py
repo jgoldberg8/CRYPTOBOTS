@@ -52,59 +52,57 @@ class RealTimeDataSimulator:
         return window_data
     
     def _process_window(self, window_data):
-        """Process window data into model features"""
-        # Get basic features
-        features = {}
-        granularities = ['5s', '10s', '20s', '30s', '60s']
-        
-        for granularity in granularities:
-            gran_features = []
-            for feature in self.time_features:
-                # Get all columns for this feature and granularity
-                cols = [c for c in window_data.columns if c.startswith(f"{feature}_") and f"to{granularity}" in c]
-                if cols:
-                    # Take the most recent value for each feature
-                    latest_values = window_data[cols].iloc[-1].values if len(window_data) > 0 else np.zeros(len(cols))
-                    gran_features.append(latest_values)
-            
-            if gran_features:
-                features[f'features_{granularity}'] = np.concatenate(gran_features)
-                features[f'length_{granularity}'] = len(window_data)
-        
-        # Add global features
-        global_features = [
-            window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
-            len(window_data) / self.window_size  # Activity density
-        ]
-        features['global_features'] = np.array(global_features)
-        
-        return features
-    
-    def __iter__(self):
-        """Iterator for simulating real-time data arrival"""
-        self.reset()
-        max_time = self.data['creation_time'].max()
-        
-        while self.current_time <= max_time:
-            window_data = self._get_current_window()
-            features = self._process_window(window_data)
-            
-            # Get actual peak time if available
-            actual_peak = None
-            if len(window_data) > 0:
-                actual_peak = window_data['time_to_peak'].iloc[-1]
-            
-            yield {
-                'time': self.current_time,
-                'features': features,
-                'actual_peak': actual_peak,
-                'window_data': window_data
-            }
-            
-            self.current_time += pd.Timedelta(seconds=self.step_size)
+      """Process window data into model features with proper granularity structure"""
+      features = {}
+      granularities = ['5s', '10s', '20s', '30s', '60s']
+      
+      # Base features that we want to capture for each granularity
+      base_features = [
+          'transaction_count',
+          'buy_pressure',
+          'volume',
+          'rsi',
+          'price_volatility',
+          'volume_volatility',
+          'momentum',
+          'trade_amount_variance',
+          'transaction_rate',
+          'trade_concentration',
+          'unique_wallets'
+      ]
+      
+      # Process each granularity
+      for granularity in granularities:
+          features_array = []
+          sequence_length = self.window_size // int(granularity.replace('s', ''))
+          
+          # For each time step in the granularity
+          for time_step in range(sequence_length):
+              step_features = []
+              for feature in base_features:
+                  col_name = f"{feature}_{time_step*int(granularity.replace('s', ''))}to{(time_step+1)*int(granularity.replace('s', ''))}s"
+                  if col_name in window_data.columns:
+                      value = window_data[col_name].iloc[-1] if len(window_data) > 0 else 0.0
+                  else:
+                      value = 0.0
+                  step_features.append(value)
+              features_array.append(step_features)
+          
+          # Convert to numpy array and store
+          features[f'features_{granularity}'] = np.array(features_array, dtype=np.float32)
+          features[f'length_{granularity}'] = len(window_data) if len(window_data) > 0 else 1
+      
+      # Add global features
+      global_features = [
+          window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
+          len(window_data) / self.window_size  # Activity density
+      ]
+      features['global_features'] = np.array(global_features, dtype=np.float32)
+      
+      return features
 
 def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
     """
