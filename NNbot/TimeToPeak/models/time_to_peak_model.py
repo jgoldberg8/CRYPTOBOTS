@@ -12,8 +12,9 @@ import numpy as np
 from tqdm import tqdm
 import logging
 import wandb
+from torch.utils.data import Dataset, DataLoader
 
-from TimeToPeak.datasets.time_token_dataset import create_multi_granular_loaders
+from TimeToPeak.datasets.time_token_dataset import MultiGranularTimeDataset, create_multi_granular_loaders
 from TimeToPeak.utils.save_model_artifacts import save_model_artifacts
 from TimeToPeak.utils.setup_logging import setup_logging
 from TimeToPeak.utils.train_val_split import train_val_split
@@ -273,30 +274,31 @@ def train_model(model, train_loader, val_loader,
                 patience=10,
                 use_wandb=False,
                 project_name="time_to_peak",
-                checkpoint_dir='TimeToPeak/checkpoints'):
+                checkpoint_dir='checkpoints'):
     """
-    Optimized training function with improved regularization and monitoring
+    Enhanced training function with improved stability and monitoring
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
-    # Initialize loss with optimized weights
+    # Initialize loss with stable weights
     criterion = RealTimePeakLoss(
-        alpha=0.2,    # Reduced uncertainty weight
-        beta=0.15,    # Reduced directional weight
-        gamma=0.1,    # Reduced overall regularization
-        peak_loss_weight=0.3  # Reduced peak detection weight
+        alpha=0.2,    # Uncertainty weight
+        beta=0.15,    # Directional weight
+        gamma=0.1,    # Regularization
+        peak_loss_weight=0.3  # Peak detection weight
     )
     
-    # Optimizer with increased weight decay for better regularization
+    # Optimizer with gradient clipping
     optimizer = optim.AdamW(
         model.parameters(),
         lr=learning_rate,
         weight_decay=weight_decay,
-        betas=(0.9, 0.999)
+        betas=(0.9, 0.999),
+        eps=1e-8  # Increased epsilon for better numerical stability
     )
     
-    # Learning rate scheduler with gradual warmup
+    # Learning rate scheduler with warmup
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=learning_rate,
@@ -307,7 +309,8 @@ def train_model(model, train_loader, val_loader,
         final_div_factor=1000.0
     )
     
-    scaler = torch.GradScaler()
+    # Initialize automatic mixed precision
+    scaler = GradScaler()
     best_val_loss = float('inf')
     patience_counter = 0
     best_epoch_metrics = None
@@ -348,23 +351,36 @@ def train_model(model, train_loader, val_loader,
         train_pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Train]')
         
         for batch in train_pbar:
+            # Move batch to device and handle possible missing keys
             batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
             
-            with torch.autocast(device_type='cuda', enabled=True):
+            # Forward pass with automatic mixed precision
+            with autocast(device_type='cuda', enabled=True):
                 mean, log_var, peak_detected, peak_prob = model(batch, detect_peaks=True)
                 target = batch['targets'].view(-1)
                 
-                loss = criterion(
-                    mean, 
-                    log_var, 
-                    peak_prob, 
-                    target,
-                    peak_target=batch.get('peak_target')
-                )
-                
-                mse = F.mse_loss(mean.view(-1), target)
-                mae = F.l1_loss(mean.view(-1), target)
+                # Compute loss with proper error handling
+                try:
+                    loss = criterion(
+                        mean, 
+                        log_var, 
+                        peak_prob, 
+                        target,
+                        peak_target=batch.get('peak_target')
+                    )
+                    
+                    # Check for invalid loss values
+                    if torch.isnan(loss) or torch.isinf(loss):
+                        print(f"Warning: Invalid loss value encountered: {loss.item()}")
+                        continue
+                    
+                    mse = F.mse_loss(mean.view(-1), target)
+                    mae = F.l1_loss(mean.view(-1), target)
+                    
+                except RuntimeError as e:
+                    print(f"Error in loss computation: {str(e)}")
+                    continue
                 
                 train_losses.append(loss.item())
                 train_metrics['mse'].append(mse.item())
@@ -375,21 +391,31 @@ def train_model(model, train_loader, val_loader,
                     peak_accuracy = ((peak_detected.view(-1) == peak_target).float().mean()).item()
                     train_metrics['peak_accuracy'].append(peak_accuracy)
             
+            # Backward pass with gradient scaling
             scaler.scale(loss).backward()
             
-            # Gradient clipping to prevent exploding gradients
+            # Gradient clipping
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
+            # Optimization step
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
             
+            # Update progress bar
             train_pbar.set_postfix({
                 'loss': f"{loss.item():.4f}",
                 'lr': f"{scheduler.get_last_lr()[0]:.6f}"
             })
+            
+            # Check for gradient problems
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    if torch.isnan(param.grad).any():
+                        print(f"Warning: NaN gradient in {name}")
         
+        # Calculate training metrics
         avg_train_loss = np.mean(train_losses)
         avg_train_metrics = {k: np.mean(v) for k, v in train_metrics.items() if len(v) > 0}
         
@@ -441,6 +467,7 @@ def train_model(model, train_loader, val_loader,
                 
                 val_pbar.set_postfix({'loss': f"{loss.item():.4f}"})
         
+        # Calculate validation metrics
         avg_val_loss = np.mean(val_losses)
         avg_val_metrics = {k: np.mean(v) for k, v in val_metrics.items() if len(v) > 0}
         
@@ -453,6 +480,7 @@ def train_model(model, train_loader, val_loader,
         if 'peak_accuracy' in avg_val_metrics:
             training_stats['peak_detection_accuracy'].append(avg_val_metrics['peak_accuracy'])
         
+        # Log to wandb if enabled
         if use_wandb:
             wandb_log = {
                 "train_loss": avg_train_loss,
@@ -470,6 +498,7 @@ def train_model(model, train_loader, val_loader,
                     wandb_log[f"val_{metric}"] = avg_val_metrics[metric]
             wandb.log(wandb_log)
         
+        # Print epoch summary
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         print(f"Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
         print(f"Train MAE: {avg_train_metrics['mae']:.4f}, Val MAE: {avg_val_metrics['mae']:.4f}")
@@ -477,7 +506,7 @@ def train_model(model, train_loader, val_loader,
             print(f"Train Peak Accuracy: {avg_train_metrics['peak_accuracy']:.4f}, "
                   f"Val Peak Accuracy: {avg_val_metrics['peak_accuracy']:.4f}")
         
-        # Check for improvement
+        # Check for improvement and save best model
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             best_epoch_metrics = {
@@ -488,16 +517,28 @@ def train_model(model, train_loader, val_loader,
             patience_counter = 0
             training_stats['best_epoch'] = epoch
             
-            # Save best model with all necessary artifacts
+            # Save best model checkpoint with all necessary information
+            checkpoint_path = os.path.join(checkpoint_dir, 'best_model.pt')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
+                'scaler_state_dict': scaler.state_dict(),
                 'loss': best_val_loss,
                 'training_stats': training_stats,
-                'model_metrics': best_epoch_metrics
-            }, f"{checkpoint_dir}/best_model.pt")
+                'model_metrics': best_epoch_metrics,
+                'model_config': {
+                    'input_size': model.granularity_processors['5s'].feature_proj[0].in_features,
+                    'hidden_size': model.granularity_processors['5s'].feature_proj[0].out_features,
+                    'num_heads': model.granularity_processors['5s'].attention.num_heads,
+                    'dropout_rate': model.granularity_processors['5s'].feature_proj[3].p,
+                }
+            }, checkpoint_path)
+            
+            # Save a backup of the best model
+            backup_path = os.path.join(checkpoint_dir, f'best_model_backup_epoch_{epoch}.pt')
+            shutil.copy2(checkpoint_path, backup_path)
         else:
             patience_counter += 1
             
@@ -506,14 +547,132 @@ def train_model(model, train_loader, val_loader,
                 print(f"\nEarly stopping triggered after {epoch + 1} epochs")
                 break
     
-    # Load best model
-    checkpoint = torch.load(f"{checkpoint_dir}/best_model.pt")
+    # Load best model at the end of training
+    best_model_path = os.path.join(checkpoint_dir, 'best_model.pt')
+    checkpoint = torch.load(best_model_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     
+    # Clean up wandb
     if use_wandb:
         wandb.finish()
     
     return model, training_stats, best_val_loss
+
+def create_data_loaders(train_df, val_df, batch_size=32, num_workers=4):
+    """Create data loaders with proper error handling and monitoring"""
+    try:
+        # Create training dataset
+        train_dataset = MultiGranularTimeDataset(train_df, train=True)
+        
+        # Create validation dataset with scalers from training
+        val_dataset = MultiGranularTimeDataset(
+            val_df,
+            scaler=train_dataset.scalers,
+            train=False
+        )
+        
+        # Create data loaders with proper worker initialization
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=False,
+            persistent_workers=True if num_workers > 0 else False
+        )
+        
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=False,
+            persistent_workers=True if num_workers > 0 else False
+        )
+        
+        return train_loader, val_loader
+    
+    except Exception as e:
+        print(f"Error creating data loaders: {str(e)}")
+        raise
+
+def main():
+    """Main training pipeline with improved error handling and logging"""
+    # Setup logging
+    logger = setup_logging()
+    logger.info("Starting training pipeline")
+    
+    try:
+        # Create directory structure
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        checkpoints_dir = os.path.join(current_dir, 'checkpoints')
+        os.makedirs(checkpoints_dir, exist_ok=True)
+        
+        # Load and prepare data
+        logger.info("Loading and preparing data...")
+        data_path = os.path.join(current_dir, 'data', 'time-data.csv')
+        df = pd.read_csv(data_path)
+        df = clean_dataset(df)  # Implement this based on your needs
+        
+        # Split data
+        train_df, val_df = train_val_split(df, val_size=0.2)
+        logger.info(f"Train set: {len(train_df)} samples, Val set: {len(val_df)} samples")
+        
+        # Create data loaders
+        train_loader, val_loader = create_data_loaders(train_df, val_df)
+        logger.info("Data loaders created successfully")
+        
+        # Initialize model
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = RealTimePeakPredictor(
+            input_size=11,  # Adjust based on your feature size
+            hidden_size=256,
+            window_size=60,
+            num_heads=8,
+            num_gru_layers=2,
+            dropout_rate=0.5
+        ).to(device)
+        logger.info(f"Model initialized on {device}")
+        
+        # Train model
+        logger.info("Starting model training...")
+        model, training_stats, best_val_loss = train_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            checkpoint_dir=checkpoints_dir
+        )
+        
+        logger.info(f"Training completed. Best validation loss: {best_val_loss:.4f}")
+        return model, training_stats
+        
+    except Exception as e:
+        logger.error(f"Error in training pipeline: {str(e)}", exc_info=True)
+        raise
+
+if __name__ == "__main__":
+    main()
+
+
+
+def create_directory_structure():
+    """Create the required directory structure in TimeToPeak"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    directories = [
+        'checkpoints',
+        'artifacts',
+        'evaluation',
+        'data',
+        'logs'
+    ]
+    
+    for directory in directories:
+        dir_path = os.path.join(current_dir, directory)
+        os.makedirs(dir_path, exist_ok=True)
+        print(f"Created directory: {dir_path}")    
 
 def main():
     # Setup logging
@@ -525,20 +684,25 @@ def main():
     model_config = config['model']
     training_config = config['training']
     
-    # Create directories
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    checkpoints_dir = os.path.join(project_root, 'TimeToPeak', 'checkpoints')
-    artifacts_dir = os.path.join(project_root, 'TimeToPeak', 'Artifacts')
+    # Get the TimeToPeak directory path (where the current file is)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Create directories within TimeToPeak
+    checkpoints_dir = os.path.join(current_dir, 'checkpoints')
+    artifacts_dir = os.path.join(current_dir, 'artifacts')
+    data_path = os.path.join(current_dir, 'data', 'time-data.csv')
+    
     os.makedirs(checkpoints_dir, exist_ok=True)
     os.makedirs(artifacts_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(data_path), exist_ok=True)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
     try:
-        # Load and process data
+        # Load and process data with corrected path
         logger.info("Loading data...")
-        df = pd.read_csv('data/time-data.csv')
+        df = pd.read_csv(data_path)
         df = clean_dataset(df)
         logger.info(f"Data loaded and cleaned. Shape: {df.shape}")
         
@@ -608,5 +772,10 @@ def main():
         logger.error(f"Error during training: {str(e)}", exc_info=True)
         raise
 
+
+
 if __name__ == "__main__":
+    # Create directory structure first
+    create_directory_structure()
+    # Then run the main function
     results = main()

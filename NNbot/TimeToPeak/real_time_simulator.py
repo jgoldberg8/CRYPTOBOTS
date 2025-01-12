@@ -12,10 +12,11 @@ from tqdm import tqdm
 from TimeToPeak.models.time_to_peak_model import RealTimePeakPredictor
 from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.setup_logging import setup_logging
+
 warnings.filterwarnings('ignore')
 
 class RealTimeDataSimulator:
-    def __init__(self, data_df, window_size=60, step_size=5, model_path='checkpoints/best_model.pt'):
+    def __init__(self, data_df, window_size=60, step_size=5, model_path=None):
         """
         Simulates real-time data arrival from historical data.
         
@@ -23,12 +24,17 @@ class RealTimeDataSimulator:
             data_df (pd.DataFrame): Full historical dataset
             window_size (int): Size of the sliding window in seconds
             step_size (int): How many seconds to advance in each step
-            model_path (str): Path to the model checkpoint
+            model_path (str): Path to the model checkpoint. If None, uses default path
         """
         self.data = data_df.sort_values('creation_time')
         self.window_size = window_size
         self.step_size = step_size
         self.current_time = None
+        
+        # Set default model path if none provided
+        if model_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, 'checkpoints', 'best_model.pt')
         
         # Try to load scalers from various possible locations and keys
         self.scalers = self._load_scalers(model_path)
@@ -48,44 +54,46 @@ class RealTimeDataSimulator:
             'unique_wallets'
         ]
         self.reset()
+
     def _load_scalers(self, model_path):
-      """
-      Load scalers from checkpoint, handling different possible locations and keys.
-      """
-      try:
-          # First try loading the direct checkpoint
-          checkpoint = torch.load(model_path, map_location='cpu')
-          
-          # Check various possible keys for scalers
-          if 'scalers' in checkpoint:
-              return checkpoint['scalers']
-          elif 'scaler' in checkpoint:
-              return checkpoint['scaler']
-          
-          # If not found, try looking for model_artifacts.pt in the artifacts directory
-          project_root = os.path.dirname(os.path.dirname(os.path.dirname(model_path)))
-          artifacts_path = os.path.join(project_root, 'NNbot', 'TimeToPeak', 'models', 'Artifacts', 'model_artifacts.pt')
-          
-          if os.path.exists(artifacts_path):
-              artifacts = torch.load(artifacts_path, map_location='cpu')
-              if 'scalers' in artifacts:
-                  return artifacts['scalers']
-              elif 'scaler' in artifacts:
-                  return artifacts['scaler']
-          
-          # If still not found, try loading from scalers.pth in the same directory as the model
-          scalers_path = os.path.join(os.path.dirname(model_path), 'scalers.pth')
-          if os.path.exists(scalers_path):
-              return torch.load(scalers_path, map_location='cpu')
-          
-          raise KeyError("Could not find scalers in any of the expected locations")
-          
-      except Exception as e:
-          raise RuntimeError(f"Error loading scalers from {model_path}: {str(e)}\n"
-                          f"Please ensure the model checkpoint contains the scalers "
-                          f"under either 'scalers' or 'scaler' key, or in a separate "
-                          f"scalers.pth file.") from e
-      
+        """
+        Load scalers from checkpoint, handling different possible locations and keys.
+        """
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # First try loading the direct checkpoint
+            checkpoint = torch.load(model_path, map_location='cpu')
+            
+            # Check various possible keys for scalers
+            if 'scalers' in checkpoint:
+                return checkpoint['scalers']
+            elif 'scaler' in checkpoint:
+                return checkpoint['scaler']
+            
+            # Try looking for model_artifacts.pt in the artifacts directory
+            artifacts_path = os.path.join(current_dir, 'artifacts', 'model_artifacts.pt')
+            
+            if os.path.exists(artifacts_path):
+                artifacts = torch.load(artifacts_path, map_location='cpu')
+                if 'scalers' in artifacts:
+                    return artifacts['scalers']
+                elif 'scaler' in artifacts:
+                    return artifacts['scaler']
+            
+            # Try loading from scalers.pth in the checkpoints directory
+            scalers_path = os.path.join(current_dir, 'checkpoints', 'scalers.pth')
+            if os.path.exists(scalers_path):
+                return torch.load(scalers_path, map_location='cpu')
+            
+            raise KeyError("Could not find scalers in any of the expected locations")
+            
+        except Exception as e:
+            raise RuntimeError(f"Error loading scalers from {model_path}: {str(e)}\n"
+                            f"Please ensure the model checkpoint contains the scalers "
+                            f"under either 'scalers' or 'scaler' key, or in a separate "
+                            f"scalers.pth file.") from e
+    
     def reset(self):
         """Reset simulation to start"""
         self.current_time = self.data['creation_time'].min()
@@ -135,7 +143,6 @@ class RealTimeDataSimulator:
         features['global_features'] = global_features
         return features
 
-
     def __iter__(self):
         """Return the iterator object (self)"""
         self.reset()
@@ -166,7 +173,7 @@ class RealTimeDataSimulator:
             'window_data': window_data
         }
 
-def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5, model_path='checkpoints/best_model.pt'):
+def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5, model_path=None):
     """
     Evaluate model with a single prediction per token and inverse transform predictions
     """
@@ -288,9 +295,7 @@ def visualize_realtime_predictions(metrics):
     return fig
 
 def analyze_prediction_transitions(metrics):
-    """
-    Analyze how predictions change over time
-    """
+    """Analyze how predictions change over time"""
     predictions = metrics['predictions']
     peak_detections = metrics['peak_detections']
     confidences = metrics['confidences']
@@ -313,33 +318,12 @@ def analyze_prediction_transitions(metrics):
     
     return analysis
 
-
-
-
-
-def load_model_and_config(model_path):
-    """Load trained model and its configuration"""
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint = torch.load(model_path, map_location=device)
-    
-    config = checkpoint.get('config', {})
-    config.setdefault('input_size', 11)
-    config.setdefault('hidden_size', 256)
-    config.setdefault('window_size', 60)
-    
-    model = RealTimePeakPredictor(
-        input_size=config['input_size'],
-        hidden_size=config['hidden_size'],
-        window_size=config['window_size']
-    ).to(device)
-    
-    model.load_state_dict(checkpoint['model_state_dict'])
-    return model, config
-
 def save_evaluation_results(metrics, analysis, save_dir):
     """Save evaluation results and figures"""
-    # Create results directory
-    results_dir = Path(save_dir) / 'realtime_evaluation'
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Create results directory within TimeToPeak/evaluation
+    results_dir = Path(current_dir) / 'evaluation' / save_dir
     results_dir.mkdir(parents=True, exist_ok=True)
     
     # Convert numpy types to Python native types
@@ -396,25 +380,69 @@ def save_evaluation_results(metrics, analysis, save_dir):
     fig.savefig(results_dir / 'prediction_transitions.png')
     plt.close(fig)
 
+def load_model_and_config(model_path=None):
+    """Load trained model and its configuration"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Use default path if none provided
+    if model_path is None:
+        model_path = os.path.join(current_dir, 'checkpoints', 'best_model.pt')
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    checkpoint = torch.load(model_path, map_location=device)
+    
+    config = checkpoint.get('config', {})
+    config.setdefault('input_size', 11)
+    config.setdefault('hidden_size', 256)
+    config.setdefault('window_size', 60)
+    
+    model = RealTimePeakPredictor(
+        input_size=config['input_size'],
+        hidden_size=config['hidden_size'],
+        window_size=config['window_size']
+    ).to(device)
+    
+    model.load_state_dict(checkpoint['model_state_dict'])
+    return model, config
+
+def create_directory_structure():
+    """Create the required directory structure in TimeToPeak"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    directories = [
+        'checkpoints',
+        'artifacts',
+        'evaluation',
+        'data',
+        'logs'
+    ]
+    
+    for directory in directories:
+        dir_path = os.path.join(current_dir, directory)
+        os.makedirs(dir_path, exist_ok=True)
+        print(f"Created directory: {dir_path}")
+
 def main():
     # Setup logging
     logger = setup_logging()
     logger.info("Starting real-time evaluation pipeline")
     
-    # Get project root directory (2 levels up from current file)
+    # Get the TimeToPeak directory path (where the current file is)
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(current_dir))
     
-    # Configuration with updated paths
+    # Configuration with corrected paths
     config = {
-        'model_path': os.path.join(project_root, 'NNbot', 'checkpoints', 'best_model.pt'),
-        'data_path': 'data/time-data.csv',
+        'model_path': os.path.join(current_dir, 'checkpoints', 'best_model.pt'),
+        'data_path': os.path.join(current_dir, 'data', 'time-data.csv'),
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
-        'evaluation_dir': os.path.join(project_root, 'NNBOT', 'TimeToPeak', 'evaluation')
+        'evaluation_dir': os.path.join(current_dir, 'evaluation')
     }
     
     try:
+        # Create directory structure
+        create_directory_structure()
+        
         # Load and clean data
         logger.info("Loading data...")
         df = pd.read_csv(config['data_path'])
@@ -442,7 +470,7 @@ def main():
             data_df=df,
             window_size=config['window_size'],
             step_size=config['step_size'],
-            model_path=config['model_path']  # Pass the correct model path
+            model_path=config['model_path']
         )
         
         logger.info("Analyzing prediction transitions...")
@@ -480,7 +508,7 @@ def main():
 if __name__ == "__main__":
     results = main()
     
-    # Access results (optional)
+    # Access results
     metrics = results['metrics']
     analysis = results['analysis']
     eval_dir = results['eval_dir']
