@@ -126,9 +126,7 @@ class RealTimeDataSimulator:
         }
 
 def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
-    """
-    Evaluate model by making a single prediction for each token
-    """
+    """Evaluate model by making a single prediction for each token"""
     device = next(model.parameters()).device
     model.eval()
     
@@ -137,14 +135,14 @@ def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
     confidences = []
     
     # Group by token
-    tokens = data_df.groupby('mint')
+    unique_tokens = data_df['mint'].unique()
     
     with torch.no_grad():
-        for token_name, token_data in tqdm(tokens, desc="Evaluating predictions"):
-            # Get the first window of data for prediction
-            window_data = token_data.iloc[:1]  # Just get first datapoint
+        for token in tqdm(unique_tokens, desc="Evaluating predictions"):
+            # Get data for this token
+            token_data = data_df[data_df['mint'] == token].sort_values('creation_time')
             
-            # Process window into features
+            # Create simulator and get first window
             simulator = RealTimeDataSimulator(token_data, window_size, step_size)
             batch = next(iter(simulator))
             
@@ -154,12 +152,12 @@ def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
                 for k, v in batch['features'].items()
             }
             
-            # Get model predictions
+            # Get initial prediction
             mean, log_var, peak_detected, peak_prob = model(features, detect_peaks=True)
             
             # Store results
             predictions.append(mean.cpu().numpy().item())
-            actuals.append(token_data['time_to_peak'].iloc[0])  # Get actual peak time
+            actuals.append(token_data['time_to_peak'].iloc[0])
             confidences.append(torch.exp(-log_var).cpu().numpy().item())
     
     # Convert to numpy arrays
