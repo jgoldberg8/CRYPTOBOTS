@@ -8,7 +8,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.datasets.time_token_dataset import create_multi_granular_loaders
-from TimeToPeak.models.time_to_peak_model import MultiGranularPeakPredictor
+from TimeToPeak.models.time_to_peak_model import RealTimePeakPredictor 
 
 
 def evaluate_model_on_data(model_path, data_paths, batch_size=64):
@@ -39,7 +39,7 @@ def evaluate_model_on_data(model_path, data_paths, batch_size=64):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model first
-    model = MultiGranularPeakPredictor(
+    model = RealTimePeakPredictor(
         input_size=11,
         hidden_size=256
     ).to(device)

@@ -210,14 +210,14 @@ def visualize_realtime_predictions(metrics):
     relative_times = [(t - start_time).total_seconds() for t in metrics['timestamps']]
     
     # Plot predictions vs actuals
-    ax1.plot(range(len(metrics['predictions'])), metrics['predictions'], label='Predictions', alpha=0.7)
+    ax1.plot(relative_times, metrics['predictions'], label='Predictions', alpha=0.7)
     valid_times = [t for t, a in zip(relative_times, metrics['actuals']) if a is not None]
     valid_actuals = [a for a in metrics['actuals'] if a is not None]
-    ax1.scatter([i for i, a in enumerate(metrics['actuals']) if a is not None], valid_actuals, c='red', label='Actual Peaks', alpha=0.5)
+    ax1.scatter(valid_times, valid_actuals, c='red', label='Actual Peaks', alpha=0.5)
     
     # Add confidence bands
-    confidence = np.exp(-np.array(metrics['confidences']))
-    ax1.fill_between(range(len(metrics['predictions'])), 
+    confidence = metrics['confidences']
+    ax1.fill_between(relative_times, 
                      metrics['predictions'] - 1/confidence,
                      metrics['predictions'] + 1/confidence,
                      alpha=0.2)
@@ -228,7 +228,7 @@ def visualize_realtime_predictions(metrics):
     ax1.legend()
     
     # Plot peak detections
-    ax2.plot(range(len(metrics['peak_detections'])), metrics['peak_detections'], label='Peak Detected', alpha=0.7)
+    ax2.plot(relative_times, metrics['peak_detections'], label='Peak Detected', alpha=0.7)
     ax2.set_xlabel('Time (seconds)')
     ax2.set_ylabel('Peak Detected')
     ax2.set_title('Real-time Peak Detection')
