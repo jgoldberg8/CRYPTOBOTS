@@ -538,7 +538,7 @@ def main():
     try:
         # Load and process data
         logger.info("Loading data...")
-        df = pd.read_csv(os.path.join(project_root, 'data', 'time-data.csv'))
+        df = pd.read_csv('data/time-data.csv')
         df = clean_dataset(df)
         logger.info(f"Data loaded and cleaned. Shape: {df.shape}")
         
