@@ -59,42 +59,39 @@ class RealTimeDataSimulator:
         return window_data
     
     def _process_window(self, window_data):
-        """Process window data into model features with proper granularity structure"""
-        features = {}
-        granularities = ['5s', '10s', '20s', '30s', '60s']
-        
-        # Process each granularity
-        for granularity in granularities:
-            features_array = []
-            sequence_length = self.window_size // int(granularity.replace('s', ''))
-            
-            # For each time step in the granularity
-            for time_step in range(sequence_length):
-                step_features = []
-                for feature in self.base_features:
-                    col_name = f"{feature}_{time_step*int(granularity.replace('s', ''))}to{(time_step+1)*int(granularity.replace('s', ''))}s"
-                    if col_name in window_data.columns:
-                        value = window_data[col_name].iloc[-1] if len(window_data) > 0 else 0.0
-                    else:
-                        value = 0.0
-                    step_features.append(value)
-                features_array.append(step_features)
-            
-            # Convert to numpy array and store
-            features[f'features_{granularity}'] = np.array(features_array, dtype=np.float32)
-            features[f'length_{granularity}'] = len(window_data) if len(window_data) > 0 else 1
-        
-        # Add global features
-        global_features = [
-            window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
-            window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
-            len(window_data) / self.window_size  # Activity density
-        ]
-        features['global_features'] = np.array(global_features, dtype=np.float32)
-        
-        return features
+      """Process window data to match the exact format expected by the trained model"""
+      features = {}
+      granularities = ['5s', '10s', '20s', '30s', '60s']
+      
+      for granularity in granularities:
+          gran_size = int(granularity.replace('s', ''))
+          gran_features = []
+          
+          # For this granularity, how many time steps fit in our window
+          num_steps = len(self.base_features)
+          feature_matrix = np.zeros((1, num_steps))  # batch_size=1, features=num_steps
+          
+          # Fill in features we have
+          for i, feature in enumerate(self.base_features):
+              col_name = f"{feature}_0to{gran_size}s"
+              if col_name in window_data.columns and len(window_data) > 0:
+                  feature_matrix[0, i] = window_data[col_name].iloc[-1]
+          
+          features[f'features_{granularity}'] = feature_matrix
+          features[f'length_{granularity}'] = 1 if len(window_data) > 0 else 1
+      
+      # Add global features in the same shape as during training
+      global_features = np.array([
+          window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
+          window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
+          len(window_data) / self.window_size  # Activity density
+      ]).reshape(1, -1)  # Make it 2D with batch_size=1
+      
+      features['global_features'] = global_features
+      
+      return features
     
     def __iter__(self):
         """Return the iterator object (self)"""
