@@ -203,6 +203,7 @@ class RealTimePeakPredictor(nn.Module):
         )
     
     def forward(self, batch, detect_peaks=True):
+
         # Process each granularity
         granularity_outputs = {}
         for granularity in self.granularity_processors.keys():
@@ -215,20 +216,29 @@ class RealTimePeakPredictor(nn.Module):
                 lengths = lengths.squeeze() if hasattr(lengths, 'squeeze') else lengths
                 lengths = torch.clamp(lengths, min=1) if isinstance(lengths, torch.Tensor) else np.maximum(lengths, 1)
             
+            # Process this granularity
             processed = self.granularity_processors[granularity](features, lengths)
             
-            # Use last state for prediction
-            last_state = processed[:, -1] if processed.dim() == 3 else processed
+            # Use last state and ensure correct shape
+            if processed.dim() == 3:
+                last_state = processed[:, -1]  # Shape: [batch_size, hidden_size]
+            else:
+                last_state = processed  # Already [batch_size, hidden_size]
+                
             granularity_outputs[granularity] = last_state
         
-        # Process global features
+        # Process global features and ensure correct shape
         global_features = self.global_processor(batch['global_features'])
+        if global_features.dim() == 3:
+            global_features = global_features[:, -1]
         
-        # Combine all granularities
-        combined_features = torch.stack(
-            [global_features] + [granularity_outputs[g] for g in self.granularity_processors.keys()],
-            dim=1
-        )
+        # Ensure all features have the same shape before stacking
+        all_features = [global_features]
+        for granularity in self.granularity_processors.keys():
+            all_features.append(granularity_outputs[granularity])
+        
+        # Stack features along dimension 1
+        combined_features = torch.stack(all_features, dim=1)  # Shape: [batch_size, num_features, hidden_size]
         
         # Apply cross-granularity attention
         attended_features, _ = self.cross_attention(combined_features)

@@ -59,35 +59,35 @@ class RealTimeDataSimulator:
         return window_data
     
     def _process_window(self, window_data):
-      """Process window data to match the exact format expected by the trained model"""
+      """Process window data to match model expectations"""
       features = {}
       granularities = ['5s', '10s', '20s', '30s', '60s']
       
+      # Process each granularity
       for granularity in granularities:
           gran_size = int(granularity.replace('s', ''))
-          gran_features = []
-          
-          # For this granularity, how many time steps fit in our window
           num_steps = len(self.base_features)
-          feature_matrix = np.zeros((1, num_steps))  # batch_size=1, features=num_steps
           
-          # Fill in features we have
+          # Create feature matrix for this granularity
+          feature_matrix = np.zeros((1, 1, num_steps))  # [batch_size, sequence_length, features]
+          
+          # Fill in available features
           for i, feature in enumerate(self.base_features):
               col_name = f"{feature}_0to{gran_size}s"
               if col_name in window_data.columns and len(window_data) > 0:
-                  feature_matrix[0, i] = window_data[col_name].iloc[-1]
+                  feature_matrix[0, 0, i] = window_data[col_name].iloc[-1]
           
           features[f'features_{granularity}'] = feature_matrix
           features[f'length_{granularity}'] = 1 if len(window_data) > 0 else 1
       
-      # Add global features in the same shape as during training
+      # Process global features
       global_features = np.array([
           window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
           len(window_data) / self.window_size  # Activity density
-      ]).reshape(1, -1)  # Make it 2D with batch_size=1
+      ]).reshape(1, 1, -1)  # Make it [batch_size, sequence_length, features]
       
       features['global_features'] = global_features
       
