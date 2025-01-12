@@ -405,7 +405,7 @@ def main():
     
     # Configuration with updated paths
     config = {
-        'model_path': os.path.join(project_root, 'NNbot', 'Checkpoints', 'best_model.pt'),
+        'model_path': os.path.join(project_root, 'NNbot', 'checkpoints', 'best_model.pt'),
         'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
