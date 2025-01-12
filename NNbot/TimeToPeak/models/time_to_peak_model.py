@@ -38,7 +38,7 @@ class FeatureExtractor(nn.Module):
 
 class RealTimePeakPredictor(nn.Module):
     def __init__(self, 
-                input_size=11,  # Base feature size
+                input_size=17,  # Base feature size
                 hidden_size=256,  # Increased for more capacity
                 num_granularities=4,  # 5s, 10s, 20s, 30s, 60s windows
                 dropout_rate=0.4):
@@ -349,7 +349,7 @@ def main():
         # Initialize model
         logger.info("Initializing model...")
         model = RealTimePeakPredictor(
-            input_size=11,
+            input_size=17,
             hidden_size=256,
             num_granularities=4,
             dropout_rate=0.4
@@ -370,7 +370,7 @@ def main():
         training_info = {
             'best_val_loss': float(best_val_loss),
             'model_config': {
-                'input_size': 11,
+                'input_size': 17,
                 'hidden_size': 256,
                 'num_granularities': 4,
                 'dropout_rate': 0.4
