@@ -62,7 +62,7 @@ class RealTimeDataSimulator:
             
             # If not found, try looking for model_artifacts.pt in the same directory
             model_dir = os.path.dirname(model_path)
-            artifacts_path = os.path.join(model_dir, 'model_artifacts.pt')
+            artifacts_path = "/content/CRYPTOBOTS/NNbot/models/realtime_peak_predictor_20250112_040804/model_artifacts.pt"
             
             if os.path.exists(artifacts_path):
                 artifacts = torch.load(artifacts_path, map_location='cpu')
