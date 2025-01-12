@@ -347,7 +347,7 @@ def main():
         # Initialize model
         logger.info("Initializing model...")
         model = RealTimePeakPredictor(
-            input_size=11,
+            input_size=17,
             hidden_size=256,
             num_granularities=4,
             dropout_rate=0.4
@@ -368,7 +368,7 @@ def main():
         training_info = {
             'best_val_loss': float(best_val_loss),
             'model_config': {
-                'input_size': 11,
+                'input_size': 17,
                 'hidden_size': 256,
                 'num_granularities': 4,
                 'dropout_rate': 0.4
