@@ -127,33 +127,30 @@ class RealTimeDataSimulator:
 
 def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
     """
-    Evaluate model performance in simulated real-time conditions
-    
-    Args:
-        model: Trained RealTimePeakPredictor model
-        data_df: DataFrame with historical data
-        window_size: Size of sliding window in seconds
-        step_size: How many seconds to advance in each step
-    
-    Returns:
-        Dictionary of evaluation metrics
+    Evaluate model by making a single prediction for each token
     """
     device = next(model.parameters()).device
     model.eval()
     
-    simulator = RealTimeDataSimulator(data_df, window_size, step_size)
-    
     predictions = []
     actuals = []
-    peak_detections = []
     confidences = []
-    timestamps = []
+    
+    # Group by token
+    tokens = data_df.groupby('mint')
     
     with torch.no_grad():
-        for batch in tqdm(simulator, desc="Evaluating real-time predictions"):
+        for token_name, token_data in tqdm(tokens, desc="Evaluating predictions"):
+            # Get the first window of data for prediction
+            window_data = token_data.iloc[:1]  # Just get first datapoint
+            
+            # Process window into features
+            simulator = RealTimeDataSimulator(token_data, window_size, step_size)
+            batch = next(iter(simulator))
+            
             # Convert features to tensors
             features = {
-                k: torch.tensor(v).float().unsqueeze(0).to(device) 
+                k: torch.tensor(v).float().to(device) 
                 for k, v in batch['features'].items()
             }
             
@@ -161,78 +158,60 @@ def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
             mean, log_var, peak_detected, peak_prob = model(features, detect_peaks=True)
             
             # Store results
-            predictions.append(mean.cpu().numpy()[0])
-            peak_detections.append(peak_detected.cpu().numpy()[0])
-            confidences.append(torch.exp(-log_var).cpu().numpy()[0])
-            timestamps.append(batch['time'])
-            
-            if batch['actual_peak'] is not None:
-                actuals.append(batch['actual_peak'])
-            else:
-                actuals.append(None)
+            predictions.append(mean.cpu().numpy().item())
+            actuals.append(token_data['time_to_peak'].iloc[0])  # Get actual peak time
+            confidences.append(torch.exp(-log_var).cpu().numpy().item())
     
-    # Calculate metrics
+    # Convert to numpy arrays
     predictions = np.array(predictions)
-    peak_detections = np.array(peak_detections)
+    actuals = np.array(actuals)
     confidences = np.array(confidences)
     
-    # Filter out predictions where we have actual values
-    valid_indices = [i for i, x in enumerate(actuals) if x is not None]
-    valid_predictions = predictions[valid_indices]
-    valid_actuals = np.array([actuals[i] for i in valid_indices])
-    valid_peak_detections = peak_detections[valid_indices]
+    # Calculate R-squared
+    correlation_matrix = np.corrcoef(actuals, predictions)
+    r_squared = correlation_matrix[0,1]**2
     
     metrics = {
-        'mae': np.mean(np.abs(valid_predictions - valid_actuals)),
-        'rmse': np.sqrt(np.mean((valid_predictions - valid_actuals) ** 2)),
-        'peak_detection_accuracy': np.mean(valid_peak_detections == (valid_predictions >= valid_actuals)),
+        'mae': np.mean(np.abs(predictions - actuals)),
+        'rmse': np.sqrt(np.mean((predictions - actuals) ** 2)),
+        'r_squared': r_squared,
         'average_confidence': np.mean(confidences),
         'predictions': predictions,
-        'peak_detections': peak_detections,
-        'confidences': confidences,
-        'timestamps': timestamps,
-        'actuals': actuals
+        'actuals': actuals,
+        'confidences': confidences
     }
     
     return metrics
 
 def visualize_realtime_predictions(metrics):
-    """
-    Create visualization of real-time prediction performance
-    """
-    import matplotlib.pyplot as plt
+    """Create scatter plot of predicted vs actual values with R²"""
+    fig, ax = plt.subplots(figsize=(12, 8))
     
-    # Create figure with multiple subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
+    # Create scatter plot
+    ax.scatter(metrics['actuals'], metrics['predictions'], alpha=0.5, c='lightblue')
     
-    # Convert timestamps to relative seconds
-    start_time = metrics['timestamps'][0]
-    relative_times = [(t - start_time).total_seconds() for t in metrics['timestamps']]
+    # Add trend line
+    z = np.polyfit(metrics['actuals'], metrics['predictions'], 1)
+    p = np.poly1d(z)
+    ax.plot(metrics['actuals'], p(metrics['actuals']), "r--", alpha=0.8)
     
-    # Plot predictions vs actuals
-    ax1.plot(relative_times, metrics['predictions'], label='Predictions', alpha=0.7)
-    valid_times = [t for t, a in zip(relative_times, metrics['actuals']) if a is not None]
-    valid_actuals = [a for a in metrics['actuals'] if a is not None]
-    ax1.scatter(valid_times, valid_actuals, c='red', label='Actual Peaks', alpha=0.5)
+    # Add R² value
+    ax.text(0.05, 0.95, f'R² = {metrics["r_squared"]:.4f}', 
+            transform=ax.transAxes, fontsize=10)
     
-    # Add confidence bands
-    confidence = metrics['confidences']
-    ax1.fill_between(relative_times, 
-                     metrics['predictions'] - 1/confidence,
-                     metrics['predictions'] + 1/confidence,
-                     alpha=0.2)
+    # Labels and title
+    ax.set_xlabel('True Values (seconds)')
+    ax.set_ylabel('Predicted Values (seconds)')
+    ax.set_title('Time to Peak: Predicted vs True')
     
-    ax1.set_xlabel('Time (seconds)')
-    ax1.set_ylabel('Predicted Time to Peak')
-    ax1.set_title('Real-time Peak Predictions with Confidence')
-    ax1.legend()
+    # Make plot square and set equal scales
+    ax.set_aspect('equal', adjustable='box')
     
-    # Plot peak detections
-    ax2.plot(relative_times, metrics['peak_detections'], label='Peak Detected', alpha=0.7)
-    ax2.set_xlabel('Time (seconds)')
-    ax2.set_ylabel('Peak Detected')
-    ax2.set_title('Real-time Peak Detection')
-    ax2.set_ylim(-0.1, 1.1)
+    # Set limits based on data range
+    max_val = max(metrics['actuals'].max(), metrics['predictions'].max())
+    min_val = min(metrics['actuals'].min(), metrics['predictions'].min())
+    ax.set_xlim(min_val - 50, max_val + 50)
+    ax.set_ylim(min_val - 50, max_val + 50)
     
     plt.tight_layout()
     return fig
