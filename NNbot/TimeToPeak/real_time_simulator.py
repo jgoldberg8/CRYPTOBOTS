@@ -29,7 +29,7 @@ class RealTimeDataSimulator:
         
         # Load scalers from model artifact
         checkpoint = torch.load(model_path)
-        self.scalers = checkpoint['scaler']
+        self.scalers = checkpoint['scalers']
         
         # Base features that we want to capture for each granularity
         self.base_features = [
