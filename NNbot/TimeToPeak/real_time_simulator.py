@@ -126,75 +126,101 @@ class RealTimeDataSimulator:
         }
 
 def evaluate_realtime_predictions(model, data_df, window_size=60, step_size=5):
-    """Evaluate model by making a single prediction for each token"""
+    """
+    Evaluate model with a single prediction per token
+    """
     device = next(model.parameters()).device
     model.eval()
     
     predictions = []
     actuals = []
+    peak_detections = []
     confidences = []
     
-    # Group by token
+    # Get unique tokens
     unique_tokens = data_df['mint'].unique()
     
     with torch.no_grad():
-        for token in tqdm(unique_tokens, desc="Evaluating predictions"):
+        for token in tqdm(unique_tokens, desc="Evaluating tokens"):
             # Get data for this token
             token_data = data_df[data_df['mint'] == token].sort_values('creation_time')
             
-            # Create simulator and get first window
+            # Create simulator for this token's data
             simulator = RealTimeDataSimulator(token_data, window_size, step_size)
+            
+            # Get first batch only (initial prediction)
             batch = next(iter(simulator))
             
             # Convert features to tensors
             features = {
-                k: torch.tensor(v).float().to(device) 
+                k: torch.tensor(v).float().unsqueeze(0).to(device) 
                 for k, v in batch['features'].items()
             }
             
-            # Get initial prediction
+            # Get model predictions
             mean, log_var, peak_detected, peak_prob = model(features, detect_peaks=True)
             
             # Store results
-            predictions.append(mean.cpu().numpy().item())
-            actuals.append(token_data['time_to_peak'].iloc[0])
-            confidences.append(torch.exp(-log_var).cpu().numpy().item())
+            predictions.append(mean.cpu().numpy()[0])
+            peak_detections.append(peak_detected.cpu().numpy()[0])
+            confidences.append(torch.exp(-log_var).cpu().numpy()[0])
+            
+            if batch['actual_peak'] is not None:
+                actuals.append(batch['actual_peak'])
+            else:
+                actuals.append(None)
     
     # Convert to numpy arrays
     predictions = np.array(predictions)
-    actuals = np.array(actuals)
+    peak_detections = np.array(peak_detections)
     confidences = np.array(confidences)
     
     # Calculate R-squared
-    correlation_matrix = np.corrcoef(actuals, predictions)
+    valid_indices = [i for i, x in enumerate(actuals) if x is not None]
+    valid_predictions = predictions[valid_indices]
+    valid_actuals = np.array([actuals[i] for i in valid_indices])
+    
+    correlation_matrix = np.corrcoef(valid_actuals, valid_predictions)
     r_squared = correlation_matrix[0,1]**2
     
     metrics = {
-        'mae': np.mean(np.abs(predictions - actuals)),
-        'rmse': np.sqrt(np.mean((predictions - actuals) ** 2)),
+        'mae': np.mean(np.abs(valid_predictions - valid_actuals)),
+        'rmse': np.sqrt(np.mean((valid_predictions - valid_actuals) ** 2)),
         'r_squared': r_squared,
+        'peak_detection_accuracy': np.mean(peak_detections[valid_indices] == (valid_predictions >= valid_actuals)),
         'average_confidence': np.mean(confidences),
         'predictions': predictions,
-        'actuals': actuals,
-        'confidences': confidences
+        'peak_detections': peak_detections,
+        'confidences': confidences,
+        'actuals': actuals
     }
     
     return metrics
 
 def visualize_realtime_predictions(metrics):
     """Create scatter plot of predicted vs actual values with R²"""
+    # Get valid predictions and actuals
+    valid_indices = [i for i, x in enumerate(metrics['actuals']) if x is not None]
+    valid_predictions = metrics['predictions'][valid_indices]
+    valid_actuals = np.array([metrics['actuals'][i] for i in valid_indices])
+    
+    # Calculate R-squared
+    correlation_matrix = np.corrcoef(valid_actuals, valid_predictions)
+    r_squared = correlation_matrix[0,1]**2
+    
+    # Create plot
     fig, ax = plt.subplots(figsize=(12, 8))
     
     # Create scatter plot
-    ax.scatter(metrics['actuals'], metrics['predictions'], alpha=0.5, c='lightblue')
+    ax.scatter(valid_actuals, valid_predictions, alpha=0.5, c='lightblue')
     
     # Add trend line
-    z = np.polyfit(metrics['actuals'], metrics['predictions'], 1)
+    z = np.polyfit(valid_actuals, valid_predictions, 1)
     p = np.poly1d(z)
-    ax.plot(metrics['actuals'], p(metrics['actuals']), "r--", alpha=0.8)
+    ax.plot(valid_actuals, p(valid_actuals), "r--", alpha=0.8)
     
     # Add R² value
-    ax.text(0.05, 0.95, f'R² = {metrics["r_squared"]:.4f}', 
+    ax.text(0.05, 0.95, f'R² = {r_squared:.4f}', 
             transform=ax.transAxes, fontsize=10)
     
     # Labels and title
@@ -202,14 +228,13 @@ def visualize_realtime_predictions(metrics):
     ax.set_ylabel('Predicted Values (seconds)')
     ax.set_title('Time to Peak: Predicted vs True')
     
-    # Make plot square and set equal scales
-    ax.set_aspect('equal', adjustable='box')
-    
-    # Set limits based on data range
-    max_val = max(metrics['actuals'].max(), metrics['predictions'].max())
-    min_val = min(metrics['actuals'].min(), metrics['predictions'].min())
-    ax.set_xlim(min_val - 50, max_val + 50)
-    ax.set_ylim(min_val - 50, max_val + 50)
+    # Set equal axes with padding
+    max_val = max(max(valid_actuals), max(valid_predictions))
+    min_val = min(min(valid_actuals), min(valid_predictions))
+    padding = (max_val - min_val) * 0.1
+    ax.set_xlim(min_val - padding, max_val + padding)
+    ax.set_ylim(min_val - padding, max_val + padding)
+    ax.set_aspect('equal')
     
     plt.tight_layout()
     return fig
