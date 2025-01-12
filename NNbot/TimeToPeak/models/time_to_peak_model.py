@@ -16,6 +16,7 @@ from tqdm import tqdm
 from TimeToPeak.datasets.time_token_dataset import MultiGranularTokenDataset
 from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.time_loss import PeakPredictionLoss
+from torch.optim.lr_scheduler import OneCycleLR
 warnings.filterwarnings('ignore')
 
 class FeatureExtractor(nn.Module):
@@ -211,7 +212,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
         weight_decay=0.01
     )
     
-    scheduler = torch.optim.OneCycleLR(
+    scheduler = OneCycleLR(
         optimizer,
         max_lr=lr,
         epochs=epochs,
@@ -237,7 +238,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
             batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
             
-            with autocast(device_type='cuda', enabled=True):
+            with torch.autocast(device_type='cuda', enabled=True):
                 hazard_prob, time_pred, confidence = model(batch)
                 loss = criterion(
                     hazard_prob,
