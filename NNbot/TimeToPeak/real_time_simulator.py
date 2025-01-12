@@ -411,7 +411,7 @@ def main():
         'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
-        'evaluation_dir': os.path.join(project_root, 'TimeToPeak', 'evaluation')
+        'evaluation_dir': os.path.join(project_root, 'NNBOT', 'TimeToPeak', 'evaluation')
     }
     
     try:

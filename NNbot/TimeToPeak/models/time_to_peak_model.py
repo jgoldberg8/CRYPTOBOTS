@@ -258,7 +258,7 @@ class RealTimePeakPredictor(nn.Module):
             confidence = torch.exp(-log_var)
             
             # Return peak prediction if confident
-            peak_detected = (confidence > self.confidence_threshold) & (peak_prob > 0.5)
+            peak_detected = (confidence > self.confidence_threshold) & (peak_prob > 0.9)
             
             return mean.squeeze(-1), log_var.squeeze(-1), peak_detected, peak_prob
         
