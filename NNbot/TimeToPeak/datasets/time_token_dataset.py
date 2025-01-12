@@ -1,39 +1,26 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 import torch
 from torch.utils.data import Dataset
-import os
-import json
-import datetime
-import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.cuda.amp import autocast, GradScaler
-from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import StandardScaler, RobustScaler
-import wandb
-from tqdm import tqdm
 
-class MultiGranularTimeDataset(Dataset):
-    def __init__(self, df, scaler=None, train=True, max_sequence_length=1020):
+from utils.add_data_quality_features import add_data_quality_features
+
+class MultiGranularTokenDataset(Dataset):
+    def __init__(self, df, scaler=None, train=True, initial_window=30):
+        """
+        Dataset for token peak prediction with initial data collection period.
+        
+        Args:
+            df (pd.DataFrame): Input dataframe containing token trading data
+            scaler (dict, optional): Pre-fitted scalers
+            train (bool): Whether this is for training
+            initial_window (int): Initial data collection period in seconds
+        """
         df = df.copy()
-        self.max_sequence_length = max_sequence_length
+        self.initial_window = initial_window
         
-        # Convert time features with proper handling
-        df['creation_time'] = pd.to_datetime(df['creation_time'])
-        df['creation_time_numeric'] = (
-            df['creation_time'].dt.hour * 3600 + 
-            df['creation_time'].dt.minute * 60 + 
-            df['creation_time'].dt.second
-        ) / 86400.0  # Normalize to [0, 1]
-        
-        df['creation_time_sin'] = np.sin(2 * np.pi * df['creation_time_numeric'])
-        df['creation_time_cos'] = np.cos(2 * np.pi * df['creation_time_numeric'])
-        
-        # Base features for each time window
+        # Base features per window
         self.base_features = [
             'transaction_count',
             'buy_pressure',
@@ -48,179 +35,218 @@ class MultiGranularTimeDataset(Dataset):
             'unique_wallets'
         ]
         
-        # Define time granularities and their windows
-        self.time_granularities = {
-            '5s': self._generate_windows(5, max_sequence_length),
-            '10s': self._generate_windows(10, max_sequence_length),
-            '20s': self._generate_windows(20, max_sequence_length),
-            '30s': self._generate_windows(30, max_sequence_length),
-            '60s': self._generate_windows(60, max_sequence_length)
-        }
+        # Define time granularities
+        self.granularities = ['5s', '10s', '20s', '30s']
         
-        # Global features
-        self.global_features = [
-            'initial_investment_ratio',
-            'initial_market_cap',
-            'peak_market_cap',
-            'creation_time_sin',
-            'creation_time_cos'
-        ]
+        # Calculate additional features and prepare data
+        self._add_momentum_features(df)
+
         
-        # Initialize scalers with robust scaling for better outlier handling
+        # Initialize or load scalers
         if train:
             if scaler is None:
-                self.scalers = {
-                    'global': RobustScaler(),
-                    'target': RobustScaler(quantile_range=(10, 90)),  # More robust to outliers
-                }
-                for granularity in self.time_granularities.keys():
-                    self.scalers[granularity] = RobustScaler()
-                self.scaled_data = self._preprocess_data(df, fit=True)
+                self.scalers = self._init_scalers()
+                self.data = self._preprocess_data(df, fit=True)
             else:
                 self.scalers = scaler
-                self.scaled_data = self._preprocess_data(df, fit=False)
+                self.data = self._preprocess_data(df, fit=False)
         else:
             if scaler is None:
                 raise ValueError("Scaler must be provided for validation/test data")
             self.scalers = scaler
-            self.scaled_data = self._preprocess_data(df, fit=False)
-
-    def _generate_windows(self, step_size, max_length):
-        """Generate time windows for a specific granularity"""
-        return [f"{start}to{min(start + step_size, max_length)}" 
-                for start in range(0, max_length, step_size)]
-
-    def _extract_window_features(self, row, windows):
-        """Extract features for time windows with proper handling of missing data"""
-        features = []
-        valid_count = 0
-        
-        for window in windows:
-            window_features = []
-            has_data = False
+            self.data = self._preprocess_data(df, fit=False)
+    
+    def _add_momentum_features(self, df):
+        """Add momentum and market dynamics features"""
+        # Calculate for each granularity
+        for gran in self.granularities:
+            window = int(gran.replace('s', ''))
             
-            for feature in self.base_features:
-                col_name = f"{feature}_{window}s"
-                if col_name in row.index and pd.notnull(row[col_name]):
-                    window_features.append(float(row[col_name]))
-                    has_data = True
-                else:
-                    window_features.append(0.0)
-            
-            features.append(window_features)
-            if has_data:
-                valid_count += 1
+            # Prevent NaN calculations
+            for feature in ['price_volatility', 'volume', 'transaction_count', 'buy_pressure', 'unique_wallets']:
+                col_name = f'{feature}_0to{window}s'
                 
-        return np.array(features, dtype=np.float32), valid_count
+                # Replace NaNs with 0 or forward/backward fill
+                if col_name in df.columns:
+                    df[col_name] = df[col_name].fillna(0)  # or .fillna(method='ffill').fillna(method='bfill').fillna(0)
+            
+            try:
+                # Price dynamics with NaN handling
+                df[f'price_delta_{gran}'] = df.groupby('mint')[f'price_volatility_0to{window}s'].diff().fillna(0)
+                df[f'price_acceleration_{gran}'] = df[f'price_delta_{gran}'].diff().fillna(0)
+                
+                # Volume dynamics with NaN handling
+                df[f'volume_delta_{gran}'] = df.groupby('mint')[f'volume_0to{window}s'].diff().fillna(0)
+                df[f'volume_acceleration_{gran}'] = df[f'volume_delta_{gran}'].diff().fillna(0)
+                
+                # Trading intensity with NaN and zero handling
+                transaction_col = f'transaction_count_0to{window}s'
+                wallets_col = f'unique_wallets_0to{window}s'
+                
+                # Prevent division by zero or NaN
+                df[f'trade_intensity_{gran}'] = (
+                    df[transaction_col].fillna(0) / 
+                    (df[wallets_col].fillna(1) + 1)
+                ).fillna(0).rolling(window=min(5, len(df))).mean().fillna(0)
+                
+                # Buy pressure momentum
+                pressure_col = f'buy_pressure_0to{window}s'
+                df[f'buy_pressure_momentum_{gran}'] = df.groupby('mint')[pressure_col].diff().fillna(0)
+            
+            except KeyError as e:
+                print(f"Warning: Could not create features for {gran} due to missing columns: {e}")
+                # Create placeholder columns with zeros
+                df[f'price_delta_{gran}'] = 0
+                df[f'price_acceleration_{gran}'] = 0
+                df[f'volume_delta_{gran}'] = 0
+                df[f'volume_acceleration_{gran}'] = 0
+                df[f'trade_intensity_{gran}'] = 0
+                df[f'buy_pressure_momentum_{gran}'] = 0
 
-    def _preprocess_data(self, df, fit=False):
-        """Preprocess data with improved error handling and scaling"""
-        processed_data = {
-            'granular_features': {},
-            'sequence_lengths': {},
-            'global_features': None,
-            'targets': None,
-            'peak_targets': None
+        # Add data quality features
+        try:
+            df = add_data_quality_features(df)
+        except Exception as e:
+            print(f"Warning: Could not add data quality features: {e}")
+        
+        return df
+
+    
+    def _init_scalers(self):
+        """Initialize scalers for all feature types"""
+        return {
+            'granular': {gran: RobustScaler(quantile_range=(5, 95)) 
+                        for gran in self.granularities},
+            'global': RobustScaler(quantile_range=(5, 95)),
+            'target': RobustScaler(quantile_range=(5, 95))
         }
+    
+    def _preprocess_data(self, df, fit=False):
+        """Preprocess data and create sequences"""
+        processed_data = []
         
-        # Process each granularity
-        for granularity, windows in self.time_granularities.items():
-            all_sequences = []
-            lengths = []
+        for mint, token_data in df.groupby('mint'):
+            # Sort by time sequence (time_to_peak descending means forward in time)
+            token_data = token_data.sort_values('time_to_peak', ascending=False)
             
-            for idx in range(len(df)):
-                sequence, valid_count = self._extract_window_features(
-                    df.iloc[idx], windows
-                )
-                all_sequences.append(sequence)
-                lengths.append(valid_count)
+            # Process features for each granularity
+            gran_features = {}
+            for gran in self.granularities:
+                features = self._extract_granularity_features(token_data, gran)
+                
+                if fit:
+                    gran_features[gran] = self.scalers['granular'][gran].fit_transform(features)
+                else:
+                    gran_features[gran] = self.scalers['granular'][gran].transform(features)
             
-            # Scale features with proper reshaping
-            all_sequences = np.array(all_sequences)
-            original_shape = all_sequences.shape
-            reshaped = all_sequences.reshape(-1, len(self.base_features))
-            
+            # Process global features
+            global_features = self._extract_global_features(token_data)
             if fit:
-                scaled = self.scalers[granularity].fit_transform(reshaped)
+                global_features = self.scalers['global'].fit_transform(global_features)
             else:
-                scaled = self.scalers[granularity].transform(reshaped)
+                global_features = self.scalers['global'].transform(global_features)
             
-            scaled = scaled.reshape(original_shape)
+            # Get target information
+            target_info = self._process_target_info(token_data)
             
-            processed_data['granular_features'][granularity] = scaled
-            processed_data['sequence_lengths'][granularity] = np.array(lengths)
-        
-        # Process global features
-        global_features = df[self.global_features].fillna(0).values
-        if fit:
-            processed_data['global_features'] = self.scalers['global'].fit_transform(global_features)
-        else:
-            processed_data['global_features'] = self.scalers['global'].transform(global_features)
-        
-        # Process target with outlier handling
-        target_data = df[['time_to_peak']].values
-        if fit:
-            processed_data['targets'] = self.scalers['target'].fit_transform(target_data)
-        else:
-            processed_data['targets'] = self.scalers['target'].transform(target_data)
-        
-        # Add peak detection targets
-        if 'is_peak' in df.columns:
-            processed_data['peak_targets'] = df['is_peak'].values
+            processed_data.append({
+                'features': gran_features,
+                'global_features': global_features,
+                'target_info': target_info,
+                'token': mint
+            })
         
         return processed_data
-
-    def __len__(self):
-        return len(self.scaled_data['targets'])
-
-    def __getitem__(self, idx):
-        sample = {
-            'global_features': torch.FloatTensor(self.scaled_data['global_features'][idx]),
-            'targets': torch.FloatTensor(self.scaled_data['targets'][idx])
+    
+    def _extract_granularity_features(self, df, granularity):
+        """Extract features for specific time granularity"""
+        window = int(granularity.replace('s', ''))
+        features = []
+        
+        # Base trading features with NaN handling
+        for feature in self.base_features:
+            col_name = f"{feature}_0to{window}s"
+            if col_name in df.columns:
+                features.append(df[col_name].fillna(0).values)
+            else:
+                features.append(np.zeros(len(df)))
+        
+        # Momentum features with NaN handling
+        momentum_features = [
+            f'price_delta_{granularity}',
+            f'price_acceleration_{granularity}',
+            f'volume_delta_{granularity}',
+            f'volume_acceleration_{granularity}',
+            f'trade_intensity_{granularity}',
+            f'buy_pressure_momentum_{granularity}'
+        ]
+        
+        for feature in momentum_features:
+            if feature in df.columns:
+                features.append(df[feature].fillna(0).values)
+            else:
+                features.append(np.zeros(len(df)))
+        
+        return np.column_stack(features)
+        
+    def _extract_global_features(self, df):
+        """Extract global token features"""
+        return np.column_stack([
+            df['initial_investment_ratio'].values,
+            df['initial_market_cap'].values,
+            df['peak_market_cap'].values,
+            df['time_to_peak'].values,
+        ])
+    
+    def _process_target_info(self, df):
+        """Process target variables and create prediction masks"""
+        time_to_peak = df['time_to_peak'].values
+        
+        # Create prediction mask (True after initial window)
+        mask = (time_to_peak <= (time_to_peak.max() - self.initial_window))
+        
+        # Calculate peak proximity using exponential decay
+        # Shorter decay for earlier peaks to increase sensitivity
+        peak_proximity = np.exp(-time_to_peak / (max(20, time_to_peak.min() / 4)))
+        
+        # Calculate sample weights based on time distribution
+        time_buckets = pd.cut(time_to_peak, 
+                            bins=[30, 100, 200, 400, 600, 800, 1020],
+                            labels=['30-100', '100-200', '200-400', 
+                                  '400-600', '600-800', '800-1020'])
+        counts = time_buckets.value_counts()
+        weights = 1 / (counts[time_buckets] + 1)  # Add 1 to avoid division by zero
+        sample_weights = weights / weights.sum()
+        
+        # Add extra weight to early peaks (30-200s)
+        early_peak_mask = time_to_peak <= 200
+        sample_weights[early_peak_mask] *= 1.5
+        sample_weights = sample_weights / sample_weights.sum()
+        
+        return {
+            'time_to_peak': torch.tensor(time_to_peak, dtype=torch.float32).view(-1, 1),
+            'peak_proximity': torch.tensor(peak_proximity, dtype=torch.float32).view(-1, 1),
+            'mask': torch.tensor(mask.astype(float), dtype=torch.float32).view(-1, 1),
+            'sample_weights': torch.tensor(sample_weights, dtype=torch.float32).view(-1, 1)
         }
         
-        for granularity in self.time_granularities.keys():
-            sample[f'features_{granularity}'] = torch.FloatTensor(
-                self.scaled_data['granular_features'][granularity][idx]
-            )
-            sample[f'length_{granularity}'] = torch.LongTensor(
-                [self.scaled_data['sequence_lengths'][granularity][idx]]
-            )
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        """Get a single token's data"""
+        token_data = self.data[idx]
         
-        if self.scaled_data['peak_targets'] is not None:
-            sample['peak_target'] = torch.FloatTensor([self.scaled_data['peak_targets'][idx]])
+        sample = {
+            'global_features': torch.FloatTensor(token_data['global_features']),
+            'time_to_peak': torch.FloatTensor(token_data['target_info']['time_to_peak']),
+            'peak_proximity': torch.FloatTensor(token_data['target_info']['peak_proximity']),
+            'mask': torch.FloatTensor(token_data['target_info']['mask']),
+            'sample_weights': torch.FloatTensor(token_data['target_info']['sample_weights'])
+        }
+        
+        # Add features for each granularity
+        for i, gran in enumerate(self.granularities):
+            sample[f'features_{i}'] = torch.FloatTensor(token_data['features'][gran])
         
         return sample
-
-
-    def get_scalers(self):
-        return self.scalers
-
-def create_multi_granular_loaders(df_train, df_val, batch_size=32):
-    """Helper function to create train and validation data loaders"""
-    # Create training dataset
-    train_dataset = MultiGranularTimeDataset(df_train, train=True)
-    
-    # Create validation dataset with scalers from training
-    val_dataset = MultiGranularTimeDataset(
-        df_val,
-        scaler=train_dataset.get_scalers(),
-        train=False
-    )
-    
-    # Create data loaders
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=True
-    )
-    
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        pin_memory=True
-    )
-    
-    return train_loader, val_loader
