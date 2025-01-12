@@ -69,30 +69,32 @@ class RealTimeDataSimulator:
           num_steps = len(self.base_features)
           
           # Create feature matrix for this granularity
-          feature_matrix = np.zeros((1, 1, num_steps))  # [batch_size, sequence_length, features]
+          # [batch_size, features] -> will be expanded in network as needed
+          feature_matrix = np.zeros((1, num_steps))
           
           # Fill in available features
           for i, feature in enumerate(self.base_features):
               col_name = f"{feature}_0to{gran_size}s"
               if col_name in window_data.columns and len(window_data) > 0:
-                  feature_matrix[0, 0, i] = window_data[col_name].iloc[-1]
+                  feature_matrix[0, i] = window_data[col_name].iloc[-1]
           
           features[f'features_{granularity}'] = feature_matrix
           features[f'length_{granularity}'] = 1 if len(window_data) > 0 else 1
       
-      # Process global features
+      # Process global features [batch_size, features]
       global_features = np.array([
           window_data['initial_investment_ratio'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['initial_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['peak_market_cap'].iloc[-1] if len(window_data) > 0 else 0,
           window_data['time_to_peak'].iloc[-1] if len(window_data) > 0 else 0,
           len(window_data) / self.window_size  # Activity density
-      ]).reshape(1, 1, -1)  # Make it [batch_size, sequence_length, features]
+      ]).reshape(1, -1)
       
       features['global_features'] = global_features
       
       return features
-    
+
+
     def __iter__(self):
         """Return the iterator object (self)"""
         self.reset()
