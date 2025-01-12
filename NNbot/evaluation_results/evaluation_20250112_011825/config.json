@@ -1,0 +1,9 @@
+{
+    "model_path": "checkpoints/best_model.pt",
+    "data_path": "data/time-data.csv",
+    "window_size": 60,
+    "step_size": 5,
+    "evaluation_dir": "evaluation_results",
+    "input_size": 11,
+    "hidden_size": 256
+}
