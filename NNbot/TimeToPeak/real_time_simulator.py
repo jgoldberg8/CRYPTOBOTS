@@ -433,7 +433,7 @@ def main():
     # Configuration with corrected paths
     config = {
         'model_path': os.path.join(current_dir, 'checkpoints', 'best_model.pt'),
-        'data_path': os.path.join(current_dir, 'data', 'time-data.csv'),
+        'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
         'evaluation_dir': os.path.join(current_dir, 'evaluation')

@@ -612,7 +612,7 @@ def main():
         
         # Load and prepare data
         logger.info("Loading and preparing data...")
-        data_path = os.path.join(current_dir, 'data', 'time-data.csv')
+        data_path = 'data/time-data.csv'
         df = pd.read_csv(data_path)
         df = clean_dataset(df)  # Implement this based on your needs
         
