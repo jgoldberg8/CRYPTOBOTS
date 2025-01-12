@@ -62,7 +62,7 @@ class RealTimeDataSimulator:
             
             # If not found, try looking for model_artifacts.pt in the same directory
             model_dir = os.path.dirname(model_path)
-            artifacts_path = "/content/CRYPTOBOTS/NNbot/models/realtime_peak_predictor_20250112_040804/model_artifacts.pt"
+            artifacts_path = "/TimeToPeak/artifacts/model_artifacts.pt"
             
             if os.path.exists(artifacts_path):
                 artifacts = torch.load(artifacts_path, map_location='cpu')
@@ -401,12 +401,13 @@ def main():
     logger.info("Starting real-time evaluation pipeline")
     
     # Configuration
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     config = {
         'model_path': 'checkpoints/best_model.pt',
         'data_path': 'data/time-data.csv',
         'window_size': 60,  # seconds
         'step_size': 5,     # seconds
-        'evaluation_dir': 'evaluation_results'
+        'evaluation_dir': current_dir
     }
     
     try:
@@ -427,7 +428,7 @@ def main():
         
         # Create evaluation directory
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_dir = f"{config['evaluation_dir']}/evaluation_{timestamp}"
+        eval_dir = f"{config['evaluation_dir']}/evaluation"
         os.makedirs(eval_dir, exist_ok=True)
         
         # Evaluate model

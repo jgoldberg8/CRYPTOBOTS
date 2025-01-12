@@ -560,8 +560,10 @@ def main():
         
         # Save model
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_dir = f'models/realtime_peak_predictor_{timestamp}'
-        os.makedirs(save_dir, exist_ok=True)
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        artifacts_dir = os.path.join(current_dir, 'Artifacts')
+        os.makedirs(artifacts_dir, exist_ok=True)
         
         torch.save({
             'model_state_dict': model.state_dict(),
@@ -569,18 +571,18 @@ def main():
             'training_stats': training_stats,
             'best_val_loss': best_val_loss,
             'scaler': train_loader.dataset.get_scalers()
-        }, f'{save_dir}/model_artifacts.pt')
+        }, f'{artifacts_dir}/model_artifacts.pt')
         
-        shutil.copy2('checkpoints/best_model.pt', f'{save_dir}/best_model.pt')
+        shutil.copy2(f'{current_dir}/checkpoints/best_model.pt', f'{artifacts_dir}/best_model.pt')
         
-        logger.info(f"Model artifacts saved to {save_dir}")
+        logger.info(f"Model artifacts saved to {artifacts_dir}")
         logger.info("Training pipeline completed successfully")
         
         return {
             'model': model,
             'training_stats': training_stats,
             'best_val_loss': best_val_loss,
-            'save_dir': save_dir
+            'save_dir': artifacts_dir
         }
         
     except Exception as e:
