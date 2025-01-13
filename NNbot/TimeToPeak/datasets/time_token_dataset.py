@@ -203,7 +203,8 @@ class MultiGranularTokenDataset(Dataset):
         time_to_peak = df['time_to_peak'].values
         
         # Create prediction mask (True after initial window)
-        mask = (time_to_peak <= (time_to_peak.max() - self.initial_window))
+        # The issue was here - the comparison was reversed
+        mask = (time_to_peak >= self.initial_window)  # Changed from <= to >=
         
         # Calculate peak proximity using exponential decay
         # Shorter decay for earlier peaks to increase sensitivity
@@ -213,7 +214,7 @@ class MultiGranularTokenDataset(Dataset):
         time_buckets = pd.cut(time_to_peak, 
                             bins=[30, 100, 200, 400, 600, 800, 1020],
                             labels=['30-100', '100-200', '200-400', 
-                                  '400-600', '600-800', '800-1020'])
+                                '400-600', '600-800', '800-1020'])
         counts = time_buckets.value_counts()
         weights = 1 / (counts[time_buckets] + 1)  # Add 1 to avoid division by zero
         sample_weights = weights / weights.sum()
@@ -223,13 +224,18 @@ class MultiGranularTokenDataset(Dataset):
         sample_weights[early_peak_mask] *= 1.5
         sample_weights = sample_weights / sample_weights.sum()
         
-        return {
-            'time_to_peak': torch.tensor(time_to_peak, dtype=torch.float32).view(-1, 1),
-            'peak_proximity': torch.tensor(peak_proximity, dtype=torch.float32).view(-1, 1),
-            'mask': torch.tensor(mask.astype(float), dtype=torch.float32).view(-1, 1),
-            'sample_weights': torch.tensor(sample_weights, dtype=torch.float32).view(-1, 1)
-        }
+        # Print debug info
+        print(f"Valid predictions in batch: {mask.sum()}/{len(mask)}")
+        print(f"Time to peak range: [{time_to_peak.min()}, {time_to_peak.max()}]")
+        print(f"Mask shape: {mask.shape}")
         
+        return {
+            'time_to_peak': time_to_peak.reshape(-1, 1),
+            'peak_proximity': peak_proximity.reshape(-1, 1),
+            'mask': mask.reshape(-1, 1).astype(float),
+            'sample_weights': sample_weights.reshape(-1, 1)
+        }
+            
     def __len__(self):
         return len(self.data)
     
