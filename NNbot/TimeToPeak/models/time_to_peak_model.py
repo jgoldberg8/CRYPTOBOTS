@@ -241,7 +241,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
             optimizer.zero_grad()
             
             # Forward pass with autocast
-            with torch.autocast(device_type=device.type):
+            with autocast(device_type=device.type):
                 hazard_prob, time_pred, confidence = model(batch)
                 loss = criterion(
                     hazard_prob,
