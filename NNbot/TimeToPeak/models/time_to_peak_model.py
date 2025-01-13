@@ -223,7 +223,9 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
     )
     
     criterion = PeakPredictionLoss()
-    scaler = GradScaler(enabled=device.type == 'cuda')
+    
+    # Initialize GradScaler
+    scaler = GradScaler()
     
     best_val_loss = float('inf')
     patience_counter = 0
@@ -237,37 +239,14 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
         # Training phase
         train_pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs} [Train]')
         for batch in train_pbar:
+            # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
-            optimizer.zero_grad(set_to_none=True)
             
-            if device.type == 'cuda':
-                # GPU training with mixed precision
-                with torch.cuda.amp.autocast():
-                    hazard_prob, time_pred, confidence = model(batch)
-                    loss = criterion(
-                        hazard_prob,
-                        time_pred,
-                        confidence,
-                        batch['peak_proximity'],
-                        batch['time_to_peak'],
-                        batch['sample_weights'],
-                        batch['mask']
-                    )
-                
-                # Scale loss and compute gradients
-                scaled_loss = scaler.scale(loss)
-                scaled_loss.backward()
-                
-                # Unscale gradients and step optimizer
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                
-                # Step optimizer and update scaler
-                scaler.step(optimizer)
-                scaler.update()
+            # Zero gradients
+            optimizer.zero_grad()
             
-            else:
-                # CPU training without mixed precision
+            # Forward pass with autocast
+            with torch.cuda.amp.autocast():
                 hazard_prob, time_pred, confidence = model(batch)
                 loss = criterion(
                     hazard_prob,
@@ -278,11 +257,14 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                     batch['sample_weights'],
                     batch['mask']
                 )
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
             
+            # Backward pass
+            loss.backward()
+            
+            # Optimize
+            optimizer.step()
             scheduler.step()
+            
             train_losses.append(loss.item())
             train_pbar.set_postfix({'loss': f"{loss.item():.4f}"})
         
@@ -330,7 +312,6 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'scaler_state_dict': scaler.state_dict() if device.type == 'cuda' else None,
                 'val_loss': val_loss,
                 'train_loss': train_loss
             }, save_dir / 'best_model.pt')
