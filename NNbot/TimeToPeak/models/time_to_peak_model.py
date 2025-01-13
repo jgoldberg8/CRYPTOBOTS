@@ -240,7 +240,8 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
             batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
             
-            with torch.autocast(device_type='cuda', enabled=True):
+            # Forward pass with autocast
+            with torch.autocast(device_type=device.type):
                 hazard_prob, time_pred, confidence = model(batch)
                 loss = criterion(
                     hazard_prob,
@@ -251,15 +252,15 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                     batch['sample_weights'],
                     batch['mask']
                 )
-            if not loss.requires_grad:
-                print("Warning: Loss does not require gradient")
-                loss = loss.clone().requires_grad_(True)
             
+            # Backward pass with gradient scaling
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            
+            # Optimizer step with gradient scaling
             scaler.step(optimizer)
             scaler.update()
+            
+            # Scheduler step
             scheduler.step()
             
             train_losses.append(loss.item())
@@ -273,6 +274,8 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
         with torch.no_grad():
             for batch in val_pbar:
                 batch = {k: v.to(device) for k, v in batch.items()}
+                
+                # Forward pass for validation (no autocast needed)
                 hazard_prob, time_pred, confidence = model(batch)
                 loss = criterion(
                     hazard_prob,
