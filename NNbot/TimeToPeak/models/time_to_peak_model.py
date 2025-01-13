@@ -223,7 +223,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
     )
     
     criterion = PeakPredictionLoss()
-    scaler = torch.GradScaler()
+    scaler = GradScaler()
     
     best_val_loss = float('inf')
     patience_counter = 0
