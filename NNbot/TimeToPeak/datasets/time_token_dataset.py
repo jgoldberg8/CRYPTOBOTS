@@ -221,9 +221,9 @@ class MultiGranularTokenDataset(Dataset):
         sample_weights = sample_weights / sample_weights.sum()
         
         # Print debug info
-        print(f"Valid predictions in batch: {mask.sum()}/{len(mask)}")
-        print(f"Time to peak range: [{time_to_peak.min()}, {time_to_peak.max()}]")
-        print(f"Mask shape: {mask.shape}")
+        # print(f"Valid predictions in batch: {mask.sum()}/{len(mask)}")
+        # print(f"Time to peak range: [{time_to_peak.min()}, {time_to_peak.max()}]")
+        # print(f"Mask shape: {mask.shape}")
         
         return {
             'time_to_peak': torch.tensor(time_to_peak, dtype=torch.float32).view(-1, 1),
