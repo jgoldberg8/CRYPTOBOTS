@@ -9,60 +9,82 @@ class PeakPredictionLoss(nn.Module):
         self.confidence_weight = confidence_weight
     
     def forward(self, hazard_pred, time_pred, confidence_pred, peak_proximity, time_to_peak, sample_weights, mask):
-        # Only consider predictions after collection window
+        # Ensure all tensors have batch dimension first
+        batch_size = hazard_pred.size(0)
+        
+        # Print shapes for debugging
+        print("\nTensor shapes in loss calculation:")
+        print(f"hazard_pred: {hazard_pred.shape}")
+        print(f"time_pred: {time_pred.shape}")
+        print(f"confidence_pred: {confidence_pred.shape}")
+        print(f"peak_proximity: {peak_proximity.shape}")
+        print(f"time_to_peak: {time_to_peak.shape}")
+        print(f"sample_weights: {sample_weights.shape}")
+        print(f"mask: {mask.shape}")
+        
+        # Reshape mask to match predictions if necessary
+        mask = mask.view(batch_size, -1)
         valid_pred = mask.bool()
         
-        # Print shapes and values for debugging
-        print(f"\nDebugging Loss Computation:")
-        print(f"Valid predictions: {valid_pred.sum().item()}/{len(valid_pred)}")
-        print(f"Hazard pred range: [{hazard_pred.min().item():.4f}, {hazard_pred.max().item():.4f}]")
-        print(f"Time pred range: [{time_pred.min().item():.4f}, {time_pred.max().item():.4f}]")
-        print(f"Peak proximity range: [{peak_proximity.min().item():.4f}, {peak_proximity.max().item():.4f}]")
-        print(f"Time to peak range: [{time_to_peak.min().item():.4f}, {time_to_peak.max().item():.4f}]")
-        print(f"Sample weights sum: {sample_weights.sum().item():.4f}")
+        # Count valid predictions
+        num_valid = valid_pred.sum().item()
+        print(f"Valid predictions: {num_valid}/{batch_size}")
         
-        if not valid_pred.any():
-            return torch.tensor(0.0, device=hazard_pred.device, requires_grad=True)
-            
-        # Hazard prediction loss with peak proximity target
+        if num_valid == 0:
+            # Return zero loss (but maintain gradients)
+            return hazard_pred.sum() * 0.0
+        
+        # Ensure all tensors have compatible shapes
+        hazard_pred = hazard_pred.view(batch_size, -1)
+        time_pred = time_pred.view(batch_size, -1)
+        confidence_pred = confidence_pred.view(batch_size, -1)
+        peak_proximity = peak_proximity.view(batch_size, -1)
+        time_to_peak = time_to_peak.view(batch_size, -1)
+        sample_weights = sample_weights.view(batch_size, -1)
+        
+        # Calculate losses only for valid predictions
+        # Hazard prediction loss
         hazard_loss = F.binary_cross_entropy(
             hazard_pred[valid_pred],
             peak_proximity[valid_pred],
             reduction='none'
-        ) * sample_weights[valid_pred]
+        )
+        hazard_loss = (hazard_loss * sample_weights[valid_pred]).mean()
         
-        # Time prediction loss with sample weights
+        # Time prediction loss
         time_loss = F.smooth_l1_loss(
             time_pred[valid_pred],
             time_to_peak[valid_pred],
             reduction='none'
-        ) * sample_weights[valid_pred]
+        )
+        time_loss = (time_loss * sample_weights[valid_pred]).mean()
         
         # Add relative error term
         relative_error = torch.abs(time_pred[valid_pred] - time_to_peak[valid_pred]) / (time_to_peak[valid_pred] + 1e-8)
-        time_loss = time_loss + 0.5 * relative_error * sample_weights[valid_pred]
+        relative_loss = (relative_error * sample_weights[valid_pred]).mean()
+        time_loss = time_loss + 0.5 * relative_loss
         
         # Confidence calibration
-        confidence_target = torch.clamp(1 - relative_error, min=0.0, max=1.0)
+        confidence_target = torch.clamp(1 - relative_error.detach(), min=0.0, max=1.0)
         confidence_loss = F.binary_cross_entropy(
             confidence_pred[valid_pred],
-            confidence_target.detach(),
+            confidence_target,
             reduction='none'
-        ) * sample_weights[valid_pred]
+        )
+        confidence_loss = (confidence_loss * sample_weights[valid_pred]).mean()
         
-        # Print individual loss components
-        print(f"\nLoss Components:")
-        print(f"Hazard Loss: {hazard_loss.mean().item():.4f}")
-        print(f"Time Loss: {time_loss.mean().item():.4f}")
-        print(f"Confidence Loss: {confidence_loss.mean().item():.4f}")
-        
-        # Combine losses
+        # Combine losses with weights
         total_loss = (
-            self.hazard_weight * hazard_loss.mean() +
-            self.time_weight * time_loss.mean() +
-            self.confidence_weight * confidence_loss.mean()
+            self.hazard_weight * hazard_loss +
+            self.time_weight * time_loss +
+            self.confidence_weight * confidence_loss
         )
         
-        print(f"Total Loss: {total_loss.item():.4f}")
+        # Print individual loss components
+        print(f"\nLoss components:")
+        print(f"Hazard loss: {hazard_loss.item():.4f}")
+        print(f"Time loss: {time_loss.item():.4f}")
+        print(f"Confidence loss: {confidence_loss.item():.4f}")
+        print(f"Total loss: {total_loss.item():.4f}")
         
         return total_loss
