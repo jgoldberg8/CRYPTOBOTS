@@ -12,8 +12,16 @@ class PeakPredictionLoss(nn.Module):
         # Only consider predictions after collection window
         valid_pred = mask.bool()
         
+        # Print shapes and values for debugging
+        print(f"\nDebugging Loss Computation:")
+        print(f"Valid predictions: {valid_pred.sum().item()}/{len(valid_pred)}")
+        print(f"Hazard pred range: [{hazard_pred.min().item():.4f}, {hazard_pred.max().item():.4f}]")
+        print(f"Time pred range: [{time_pred.min().item():.4f}, {time_pred.max().item():.4f}]")
+        print(f"Peak proximity range: [{peak_proximity.min().item():.4f}, {peak_proximity.max().item():.4f}]")
+        print(f"Time to peak range: [{time_to_peak.min().item():.4f}, {time_to_peak.max().item():.4f}]")
+        print(f"Sample weights sum: {sample_weights.sum().item():.4f}")
+        
         if not valid_pred.any():
-            # Return a differentiable zero tensor instead of a plain scalar
             return torch.tensor(0.0, device=hazard_pred.device, requires_grad=True)
             
         # Hazard prediction loss with peak proximity target
@@ -42,11 +50,19 @@ class PeakPredictionLoss(nn.Module):
             reduction='none'
         ) * sample_weights[valid_pred]
         
-        # Combine losses - make sure to keep computation graph
+        # Print individual loss components
+        print(f"\nLoss Components:")
+        print(f"Hazard Loss: {hazard_loss.mean().item():.4f}")
+        print(f"Time Loss: {time_loss.mean().item():.4f}")
+        print(f"Confidence Loss: {confidence_loss.mean().item():.4f}")
+        
+        # Combine losses
         total_loss = (
             self.hazard_weight * hazard_loss.mean() +
             self.time_weight * time_loss.mean() +
             self.confidence_weight * confidence_loss.mean()
         )
+        
+        print(f"Total Loss: {total_loss.item():.4f}")
         
         return total_loss
