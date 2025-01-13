@@ -10,15 +10,13 @@ class MultiGranularTokenDataset(Dataset):
     def __init__(self, df, scaler=None, train=True, initial_window=30):
         """
         Dataset for token peak prediction with initial data collection period.
-        
-        Args:
-            df (pd.DataFrame): Input dataframe containing token trading data
-            scaler (dict, optional): Pre-fitted scalers
-            train (bool): Whether this is for training
-            initial_window (int): Initial data collection period in seconds
         """
         df = df.copy()
         self.initial_window = initial_window
+        
+        # Group the data by mint to process each token's timeline
+        self.token_groups = [group for _, group in df.groupby('mint')]
+        print(f"Found {len(self.token_groups)} token groups")
         
         # Base features per window
         self.base_features = [
@@ -38,23 +36,19 @@ class MultiGranularTokenDataset(Dataset):
         # Define time granularities
         self.granularities = ['5s', '10s', '20s', '30s']
         
-        # Calculate additional features and prepare data
-        self._add_momentum_features(df)
-
-        
         # Initialize or load scalers
         if train:
             if scaler is None:
                 self.scalers = self._init_scalers()
-                self.data = self._preprocess_data(df, fit=True)
+                self.data = self._preprocess_data(self.token_groups, fit=True)
             else:
                 self.scalers = scaler
-                self.data = self._preprocess_data(df, fit=False)
+                self.data = self._preprocess_data(self.token_groups, fit=False)
         else:
             if scaler is None:
                 raise ValueError("Scaler must be provided for validation/test data")
             self.scalers = scaler
-            self.data = self._preprocess_data(df, fit=False)
+            self.data = self._preprocess_data(self.token_groups, fit=False)
     
     def _add_momentum_features(self, df):
         """Add momentum and market dynamics features"""
@@ -121,43 +115,46 @@ class MultiGranularTokenDataset(Dataset):
             'target': RobustScaler(quantile_range=(5, 95))
         }
     
-    def _preprocess_data(self, df, fit=False):
-        """Preprocess data and create sequences"""
-        processed_data = []
-        
-        for mint, token_data in df.groupby('mint'):
-            # Sort by time sequence (time_to_peak descending means forward in time)
-            token_data = token_data.sort_values('time_to_peak', ascending=False)
+    def _preprocess_data(self, token_groups, fit=False):
+            """Preprocess data and create sequences"""
+            processed_data = []
             
-            # Process features for each granularity
-            gran_features = {}
-            for gran in self.granularities:
-                features = self._extract_granularity_features(token_data, gran)
+            for token_data in token_groups:
+                # Sort by time sequence (time_to_peak descending means forward in time)
+                token_data = token_data.sort_values('time_to_peak', ascending=False)
                 
+                # Process features for each granularity
+                gran_features = {}
+                for gran in self.granularities:
+                    features = self._extract_granularity_features(token_data, gran)
+                    
+                    if fit:
+                        gran_features[gran] = self.scalers['granular'][gran].fit_transform(features)
+                    else:
+                        gran_features[gran] = self.scalers['granular'][gran].transform(features)
+                
+                # Process global features
+                global_features = self._extract_global_features(token_data)
                 if fit:
-                    gran_features[gran] = self.scalers['granular'][gran].fit_transform(features)
+                    global_features = self.scalers['global'].fit_transform(global_features)
                 else:
-                    gran_features[gran] = self.scalers['granular'][gran].transform(features)
+                    global_features = self.scalers['global'].transform(global_features)
+                
+                # Get target information
+                target_info = self._process_target_info(token_data)
+                
+                # Store all timepoints for this token
+                for t in range(len(token_data)):
+                    processed_data.append({
+                        'features': {gran: features[t:t+1] for gran, features in gran_features.items()},
+                        'global_features': global_features[t:t+1],
+                        'target_info': {
+                            k: v[t:t+1] for k, v in target_info.items()
+                        },
+                        'token': token_data['mint'].iloc[0]
+                    })
             
-            # Process global features
-            global_features = self._extract_global_features(token_data)
-            if fit:
-                global_features = self.scalers['global'].fit_transform(global_features)
-            else:
-                global_features = self.scalers['global'].transform(global_features)
-            
-            # Get target information
-            target_info = self._process_target_info(token_data)
-            
-            processed_data.append({
-                'features': gran_features,
-                'global_features': global_features,
-                'target_info': target_info,
-                'token': mint
-            })
-        
-        return processed_data
-    
+            return processed_data
     def _extract_granularity_features(self, df, granularity):
         """Extract features for specific time granularity"""
         window = int(granularity.replace('s', ''))
