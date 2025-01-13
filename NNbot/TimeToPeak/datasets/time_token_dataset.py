@@ -203,8 +203,7 @@ class MultiGranularTokenDataset(Dataset):
         time_to_peak = df['time_to_peak'].values
         
         # Create prediction mask (True after initial window)
-        # The issue was here - the comparison was reversed
-        mask = (time_to_peak >= self.initial_window)  # Changed from <= to >=
+        mask = (time_to_peak >= self.initial_window)
         
         # Calculate peak proximity using exponential decay
         # Shorter decay for earlier peaks to increase sensitivity
