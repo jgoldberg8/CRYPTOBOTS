@@ -208,6 +208,10 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     
+    # Make sure model parameters require gradients
+    for param in model.parameters():
+        param.requires_grad = True
+    
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=lr,
@@ -231,18 +235,27 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
     
     # Training loop
     for epoch in range(epochs):
-        model.train()
+        model.train()  # Ensure model is in training mode
         train_losses = []
         
         # Training phase
         train_pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs} [Train]')
         for batch in train_pbar:
             batch = {k: v.to(device) for k, v in batch.items()}
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=False)  # Explicitly keep gradients
             
             # Forward pass with autocast
             with torch.cuda.amp.autocast():
                 hazard_prob, time_pred, confidence = model(batch)
+                
+                # Debug gradients
+                if not hazard_prob.requires_grad:
+                    print("Warning: hazard_prob doesn't require gradients!")
+                if not time_pred.requires_grad:
+                    print("Warning: time_pred doesn't require gradients!")
+                if not confidence.requires_grad:
+                    print("Warning: confidence doesn't require gradients!")
+                
                 loss = criterion(
                     hazard_prob,
                     time_pred,
@@ -252,13 +265,19 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                     batch['sample_weights'],
                     batch['mask']
                 )
+                
+                # Debug loss
+                if not loss.requires_grad:
+                    print("Warning: loss doesn't require gradients!")
             
             # Backward pass with gradient scaling
             scaler.scale(loss).backward()
+            
+            # Gradient clipping (optional but can help with stability)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             scaler.step(optimizer)
             scaler.update()
-            
-            # Scheduler step
             scheduler.step()
             
             train_losses.append(loss.item())

@@ -13,7 +13,8 @@ class PeakPredictionLoss(nn.Module):
         valid_pred = mask.bool()
         
         if not valid_pred.any():
-            return torch.tensor(0.0, device=hazard_pred.device)
+            # Return a differentiable zero tensor instead of a plain scalar
+            return torch.tensor(0.0, device=hazard_pred.device, requires_grad=True)
             
         # Hazard prediction loss with peak proximity target
         hazard_loss = F.binary_cross_entropy(
@@ -41,7 +42,7 @@ class PeakPredictionLoss(nn.Module):
             reduction='none'
         ) * sample_weights[valid_pred]
         
-        # Combine losses
+        # Combine losses - make sure to keep computation graph
         total_loss = (
             self.hazard_weight * hazard_loss.mean() +
             self.time_weight * time_loss.mean() +
