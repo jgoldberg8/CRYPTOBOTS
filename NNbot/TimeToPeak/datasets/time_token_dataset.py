@@ -115,13 +115,17 @@ class MultiGranularTokenDataset(Dataset):
             'target': RobustScaler(quantile_range=(5, 95))
         }
     
-    def _preprocess_data(self, df, fit=False):
+    def _preprocess_data(self, token_groups, fit=False):
         """Preprocess data and create sequences"""
         processed_data = []
         
-        for mint, token_data in df.groupby('mint'):
+        for token_data in token_groups:  # Iterate directly over token groups
             # Sort by time sequence (time_to_peak descending means forward in time)
             token_data = token_data.sort_values('time_to_peak', ascending=False)
+            mint = token_data['mint'].iloc[0]  # Get the mint from the first row
+            
+            # Add momentum features if they weren't added yet
+            token_data = self._add_momentum_features(token_data)
             
             # Process features for each granularity
             gran_features = {}
