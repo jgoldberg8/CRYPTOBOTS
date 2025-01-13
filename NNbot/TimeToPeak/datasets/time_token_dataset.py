@@ -230,10 +230,10 @@ class MultiGranularTokenDataset(Dataset):
         print(f"Mask shape: {mask.shape}")
         
         return {
-            'time_to_peak': time_to_peak.reshape(-1, 1),
-            'peak_proximity': peak_proximity.reshape(-1, 1),
-            'mask': mask.reshape(-1, 1).astype(float),
-            'sample_weights': sample_weights.reshape(-1, 1)
+            'time_to_peak': torch.tensor(time_to_peak, dtype=torch.float32).view(-1, 1),
+            'peak_proximity': torch.tensor(peak_proximity, dtype=torch.float32).view(-1, 1),
+            'mask': torch.tensor(mask.astype(float), dtype=torch.float32).view(-1, 1),
+            'sample_weights': torch.tensor(sample_weights, dtype=torch.float32).view(-1, 1)
         }
             
     def __len__(self):
