@@ -21,52 +21,53 @@ class PeakPredictor(nn.Module):
                 dropout_rate=0.4):
         super().__init__()
         
+        # Define attention dimension
+        self.attention_dim = hidden_size // 2
+        
         # Feature processing network
         self.feature_net = nn.Sequential(
             nn.Linear(feature_size, hidden_size),
             nn.LayerNorm(hidden_size),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.LayerNorm(hidden_size // 2),
+            nn.Linear(hidden_size, self.attention_dim),  # Match attention dimension
+            nn.LayerNorm(self.attention_dim),
             nn.GELU(),
             nn.Dropout(dropout_rate)
         )
         
         # Global feature processor
         self.global_processor = nn.Sequential(
-            nn.Linear(2, hidden_size // 2),  # Process initial investment ratio and market cap
-            nn.LayerNorm(hidden_size // 2),
+            nn.Linear(2, self.attention_dim),  # Match attention dimension
+            nn.LayerNorm(self.attention_dim),
             nn.GELU(),
             nn.Dropout(dropout_rate)
         )
         
         # Combine features across time windows using attention
         self.attention = nn.MultiheadAttention(
-            embed_dim=hidden_size // 2,
+            embed_dim=self.attention_dim,
             num_heads=4,
             dropout=dropout_rate,
             batch_first=True
         )
         
-        attention_output_size = hidden_size // 2
-        
         # Peak prediction head
         self.peak_predictor = nn.Sequential(
-            nn.Linear(attention_output_size, hidden_size // 2),
-            nn.LayerNorm(hidden_size // 2),
+            nn.Linear(self.attention_dim, self.attention_dim // 2),
+            nn.LayerNorm(self.attention_dim // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 2, 1)  # Binary classification (peak or not)
+            nn.Linear(self.attention_dim // 2, 1)  # Binary classification
         )
         
         # Confidence predictor
         self.confidence_predictor = nn.Sequential(
-            nn.Linear(attention_output_size, hidden_size // 4),
-            nn.LayerNorm(hidden_size // 4),
+            nn.Linear(self.attention_dim, self.attention_dim // 2),
+            nn.LayerNorm(self.attention_dim // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 4, 1)
+            nn.Linear(self.attention_dim // 2, 1)
         )
     
     def forward(self, features, global_features):
@@ -76,8 +77,8 @@ class PeakPredictor(nn.Module):
         # Process global features
         processed_global = self.global_processor(global_features)
         
-        # Combine all features
-        combined = torch.cat([processed_features, processed_global], dim=1)
+        # Combine features - ensure they have same dimension
+        combined = processed_features + processed_global  # Element-wise addition
         
         # Apply self-attention
         attended_features, _ = self.attention(
@@ -95,53 +96,14 @@ class PeakPredictor(nn.Module):
         
         return peak_logits, confidence_logits
 
-class PeakDetectionLoss(nn.Module):
-    def __init__(self, peak_weight=1.0, confidence_weight=0.5):
-        super().__init__()
-        self.peak_weight = peak_weight
-        self.confidence_weight = confidence_weight
-    
-    def forward(self, peak_logits, confidence_logits, is_peak, mask):
-        # Only calculate loss for valid predictions
-        valid_pred = mask.bool()
-        
-        if valid_pred.sum() == 0:
-            return peak_logits.sum() * 0.0
-        
-        # Peak prediction loss (binary cross entropy)
-        peak_loss = F.binary_cross_entropy_with_logits(
-            peak_logits[valid_pred],
-            is_peak[valid_pred],
-            reduction='mean'
-        )
-        
-        # Calculate confidence loss
-        # Confidence should be high when prediction is correct, low when wrong
-        with torch.no_grad():
-            peak_probs = torch.sigmoid(peak_logits[valid_pred])
-            prediction_error = torch.abs(peak_probs - is_peak[valid_pred])
-            confidence_target = 1.0 - prediction_error
-        
-        confidence_loss = F.binary_cross_entropy_with_logits(
-            confidence_logits[valid_pred],
-            confidence_target,
-            reduction='mean'
-        )
-        
-        # Combine losses
-        total_loss = (
-            self.peak_weight * peak_loss +
-            self.confidence_weight * confidence_loss
-        )
-        
-        return total_loss
+
 
 def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='cuda'):
     """Train the peak prediction model"""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = PeakPredictionLoss()
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = GradScaler(device_type='cuda')  # Updated GradScaler
     
     best_val_loss = float('inf')
     patience = 15
@@ -160,20 +122,18 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             # Move batch to device
             features = batch['features'].to(device)
             global_features = batch['global_features'].to(device)
-            timestamps = batch['timestamp'].to(device)
-            time_to_peak = batch['time_to_peak'].to(device)
+            is_peak = batch['is_peak'].to(device)  # Changed from timestamps to is_peak
             mask = batch['mask'].to(device)
             
             optimizer.zero_grad()
             
             # Forward pass with autocast
-            with torch.cuda.amp.autocast():
+            with autocast(device_type='cuda'):  # Updated autocast
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
                     peak_logits, 
                     confidence_logits, 
-                    timestamps, 
-                    time_to_peak, 
+                    is_peak,  # Use is_peak instead of timestamps
                     mask
                 )
             
@@ -194,16 +154,14 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             for batch in val_bar:
                 features = batch['features'].to(device)
                 global_features = batch['global_features'].to(device)
-                timestamps = batch['timestamp'].to(device)
-                time_to_peak = batch['time_to_peak'].to(device)
+                is_peak = batch['is_peak'].to(device)  # Changed from timestamps to is_peak
                 mask = batch['mask'].to(device)
                 
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
                     peak_logits, 
                     confidence_logits, 
-                    timestamps, 
-                    time_to_peak, 
+                    is_peak,  # Use is_peak instead of timestamps
                     mask
                 )
                 
