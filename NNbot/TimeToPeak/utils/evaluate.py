@@ -17,13 +17,10 @@ class RealTimeEvaluator:
         self.checkpoint = torch.load(model_path, map_location=self.device)
         self.model = self._load_model()
         
-        # Load scaler from checkpoint or create a temporary training dataset to get scaler
         if 'scaler' in self.checkpoint:
             self.scaler = self.checkpoint['scaler']
         else:
-            # Create a temporary training dataset to get the scaler
             print("Scaler not found in checkpoint, creating temporary training dataset...")
-            # Use a small subset of test data to fit scaler
             temp_train_dataset = MultiGranularTokenDataset(
                 test_df.head(100), 
                 scaler=None, 
@@ -32,11 +29,8 @@ class RealTimeEvaluator:
             self.scaler = temp_train_dataset.scalers
         
         self.model.eval()
-        
-        # Statistics tracking
-        self.predictions = defaultdict(list)
-        self.ground_truth = defaultdict(dict)
-        self.prediction_times = defaultdict(list)
+        self.true_values = []
+        self.predicted_values = []
     
     def _load_model(self):
         model = RealTimePeakPredictor().to(self.device)
@@ -44,64 +38,31 @@ class RealTimeEvaluator:
         return model
     
     def evaluate_token(self, token_df):
-        """Evaluate a single token's data in simulated real-time"""
+        """Evaluate a single token's data and make one prediction"""
         dataset = MultiGranularTokenDataset(token_df, train=False, 
-                                            scaler=self.scaler,  # Pass the scaler
-                                            initial_window=self.initial_window)
+                                          scaler=self.scaler,
+                                          initial_window=self.initial_window)
         
         mint = token_df['mint'].iloc[0]
-        self.ground_truth[mint] = {
-            'time_to_peak': token_df['time_to_peak'].iloc[0],
-            'peak_market_cap': token_df['peak_market_cap'].iloc[0]
-        }
+        true_time = token_df['time_to_peak'].iloc[0]
         
-        final_prediction = None
-        prediction_made_at = None
-        
-        # Simulate real-time data processing
+        # Make single prediction after initial window
         with torch.no_grad():
-            for t in range(len(dataset)):
-                sample = dataset[t]
-                batch = {k: v.unsqueeze(0).to(self.device) 
-                        for k, v in sample.items()}
-                
-                if batch['mask'].bool().item():
-                    hazard_prob, time_pred, confidence = self.model(batch)
-                    current_time = t * 5
-                    
-                    # Decision logic: Make final prediction when confidence exceeds threshold
-                    # or hazard probability indicates imminent peak
-                    confidence_score = confidence.sigmoid().item()  # Convert logit to probability
-                    hazard_score = hazard_prob.sigmoid().item()    # Convert logit to probability
-                    
-                    if confidence_score > 0.8 or hazard_score > 0.7:
-                        if final_prediction is None:  # Only store first confident prediction
-                            final_prediction = {
-                                'hazard_prob': hazard_score,
-                                'time_pred': time_pred.item(),
-                                'confidence': confidence_score,
-                                'current_time': current_time
-                            }
-                            prediction_made_at = current_time
-                            break  # Stop processing future data after making prediction
+            sample = dataset[self.initial_window]
+            batch = {k: v.unsqueeze(0).to(self.device) 
+                    for k, v in sample.items()}
             
-            # If we never reached confidence threshold, use last prediction
-            if final_prediction is None and len(dataset) > 0:
-                hazard_prob, time_pred, confidence = self.model(batch)
-                final_prediction = {
-                    'hazard_prob': hazard_prob.sigmoid().item(),
-                    'time_pred': time_pred.item(),
-                    'confidence': confidence.sigmoid().item(),
-                    'current_time': (len(dataset) - 1) * 5
-                }
-                prediction_made_at = (len(dataset) - 1) * 5
-        
-        if final_prediction:
-            self.predictions[mint] = [final_prediction]
-            self.prediction_times[mint] = [prediction_made_at]
+            hazard_prob, time_pred, confidence = self.model(batch)
+            
+            # Store true and predicted values for plotting
+            self.true_values.append(true_time)
+            self.predicted_values.append(time_pred.item())
     
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset token by token"""
+        self.true_values = []
+        self.predicted_values = []
+        
         for mint, token_df in tqdm(test_df.groupby('mint')):
             self.evaluate_token(token_df)
         
@@ -109,102 +70,32 @@ class RealTimeEvaluator:
     
     def calculate_metrics(self):
         """Calculate evaluation metrics"""
+        true_array = np.array(self.true_values)
+        pred_array = np.array(self.predicted_values)
+        
         metrics = {
-            'mae': [],  # Mean Absolute Error for time predictions
-            'rmse': [], # Root Mean Squared Error for time predictions
-            'early_predictions': 0,  # Count of predictions before peak
-            'late_predictions': 0,   # Count of predictions after peak
-            'prediction_times': [],  # When predictions were made
-            'confidence_calibration': [],  # Confidence vs Error correlation
-            'avg_prediction_time': None,  # Average time predictions were made
-            'prediction_time_std': None   # Standard deviation of prediction times
+            'mae': np.mean(np.abs(true_array - pred_array)),
+            'rmse': np.sqrt(np.mean((true_array - pred_array) ** 2)),
+            'r2': np.corrcoef(true_array, pred_array)[0,1] ** 2
         }
-        
-        for mint in self.ground_truth.keys():
-            true_peak_time = self.ground_truth[mint]['time_to_peak']
-            
-            if not self.predictions[mint]:
-                continue
-            
-            # Get the final prediction (there should only be one)
-            pred = self.predictions[mint][0]
-            pred_time = self.prediction_times[mint][0]
-            
-            # Calculate prediction timing metrics
-            metrics['prediction_times'].append(pred_time)
-            
-            # Calculate errors
-            pred_error = abs(pred['time_pred'] - true_peak_time)
-            metrics['mae'].append(pred_error)
-            metrics['rmse'].append(pred_error ** 2)
-            
-            # Timing classification
-            if pred['time_pred'] < true_peak_time:
-                metrics['early_predictions'] += 1
-            else:
-                metrics['late_predictions'] += 1
-            
-            # Confidence calibration
-            metrics['confidence_calibration'].append(
-                (pred['confidence'], pred_error)
-            )
-        
-        # Finalize metrics
-        metrics['mae'] = np.mean(metrics['mae']) if metrics['mae'] else float('nan')
-        metrics['rmse'] = np.sqrt(np.mean(metrics['rmse'])) if metrics['rmse'] else float('nan')
-        metrics['avg_prediction_time'] = np.mean(metrics['prediction_times']) if metrics['prediction_times'] else float('nan')
-        metrics['prediction_time_std'] = np.std(metrics['prediction_times']) if metrics['prediction_times'] else float('nan')
-        
-        if len(metrics['confidence_calibration']) > 1:
-            metrics['confidence_correlation'] = np.corrcoef(
-                [x[0] for x in metrics['confidence_calibration']],
-                [x[1] for x in metrics['confidence_calibration']]
-            )[0,1]
-        else:
-            metrics['confidence_correlation'] = float('nan')
         
         return metrics
     
-    def plot_predictions(self, mint):
-        """Plot predictions vs ground truth for a specific token"""
-        if mint not in self.predictions:
-            print(f"No predictions found for token {mint}")
-            return
-            
-        true_peak = self.ground_truth[mint]['time_to_peak']
-        pred = self.predictions[mint][0]  # Get the single prediction
-        pred_time = self.prediction_times[mint][0]
+    def plot_results(self):
+        """Create scatter plot of predicted vs true values"""
+        plt.figure(figsize=(12, 8))
+        plt.scatter(self.true_values, self.predicted_values, alpha=0.5, color='lightblue')
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        # Add diagonal line
+        min_val = min(min(self.true_values), min(self.predicted_values))
+        max_val = max(max(self.true_values), max(self.predicted_values))
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8)
         
-        # Time predictions
-        ax1.axhline(y=true_peak, color='r', linestyle='--', 
-                   label='True Peak Time')
-        ax1.axvline(x=pred_time, color='g', linestyle=':', 
-                   label='Prediction Made')
-        ax1.scatter(pred_time, pred['time_pred'], color='b', s=100,
-                   label='Prediction')
-        
-        # Add confidence interval
-        confidence_interval = 100 * pred['confidence']  # Scale for visibility
-        ax1.fill_between([pred_time], 
-                        [pred['time_pred'] - confidence_interval],
-                        [pred['time_pred'] + confidence_interval],
-                        alpha=0.2, color='b')
-        
-        ax1.set_ylabel('Time to Peak (s)')
-        ax1.set_title(f'Prediction for Token {mint}')
-        ax1.legend()
-        
-        # Hazard probability and confidence
-        ax2.scatter(pred_time, pred['hazard_prob'], color='g',
-                   label='Peak Probability')
-        ax2.scatter(pred_time, pred['confidence'], color='b',
-                   label='Confidence')
-        ax2.axvline(x=pred_time, color='g', linestyle=':')
-        ax2.set_xlabel('Time (s)')
-        ax2.set_ylabel('Probability')
-        ax2.legend()
+        plt.xlabel('True Values (time in seconds)')
+        plt.ylabel('Predicted Values (time in seconds)')
+        plt.title('Time to Peak: Predicted vs True')
+        plt.text(0.05, 0.95, f'R² = {self.calculate_metrics()["r2"]:.4f}', 
+                transform=plt.gca().transAxes)
         
         plt.tight_layout()
         plt.show()
@@ -227,16 +118,10 @@ def main():
     print("\nEvaluation Metrics:")
     print(f"Mean Absolute Error: {metrics['mae']:.2f} seconds")
     print(f"RMSE: {metrics['rmse']:.2f} seconds")
-    print(f"Early Predictions: {metrics['early_predictions']}")
-    print(f"Late Predictions: {metrics['late_predictions']}")
-    print(f"Average Prediction Time: {metrics['avg_prediction_time']:.2f} seconds")
-    print(f"Prediction Time Std: {metrics['prediction_time_std']:.2f} seconds")
-    print(f"Confidence Correlation: {metrics['confidence_correlation']:.3f}")
+    print(f"R² Score: {metrics['r2']:.4f}")
     
-    # Plot some example predictions
-    for mint in list(evaluator.predictions.keys())[:3]:
-        print(f"\nPlotting predictions for token {mint}")
-        evaluator.plot_predictions(mint)
+    # Plot results
+    evaluator.plot_results()
 
 if __name__ == "__main__":
     main()

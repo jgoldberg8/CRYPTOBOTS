@@ -16,7 +16,6 @@ class MultiGranularTokenDataset(Dataset):
         
         # Group the data by mint to process each token's timeline
         self.token_groups = [group for _, group in df.groupby('mint')]
-        print(f"Found {len(self.token_groups)} token groups")
         
         # Base features per window
         self.base_features = [
