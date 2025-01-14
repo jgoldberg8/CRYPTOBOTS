@@ -11,6 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report
 
 from TimeToPeak.datasets.time_token_dataset import TimePeakDataset
 from TimeToPeak.models.time_to_peak_model import PeakPredictor, predict_peak
+from TimeToPeak.utils.clean_dataset import clean_dataset
 
 def evaluate_model(model, dataset, device='cuda', threshold=0.5):
     """Evaluate model performance and collect predictions"""
@@ -179,6 +180,7 @@ def main():
         # Load data
         logger.info("Loading test data...")
         df = pd.read_csv('data/time-data.csv')
+        df = clean_dataset(df)
         train_size = int(0.8 * len(df))
         test_df = df[train_size:]  # Use validation set for evaluation
         
