@@ -277,11 +277,10 @@ def main():
         Path("checkpoints").mkdir(exist_ok=True)
         Path("results").mkdir(exist_ok=True)
         
-        # Clean up old scalers if they exist
-        scaler_path = Path("checkpoints/scalers.pt")
-        if scaler_path.exists():
-            print("Removing old scalers to ensure compatibility with new feature set...")
-            scaler_path.unlink()
+        # Clean up all old files
+        for file in Path("checkpoints").glob("*"):
+            print(f"Removing {file}...")
+            file.unlink()
         
         # Load data
         print("Loading data...")
@@ -295,20 +294,19 @@ def main():
         
         print(f"Train size: {len(train_df)}, Validation size: {len(val_df)}")
         
-        # Create datasets
-        print("Creating datasets...")
-        train_dataset = TimePeakDataset(train_df, train=True)
+        # Create training dataset first
+        print("Creating training dataset...")
+        train_dataset = TimePeakDataset(train_df, scaler=None, train=True)
         
-        # Save feature configuration for future reference
-        feature_config = {
-            'time_windows': train_dataset.time_windows,
-            'base_features': train_dataset.base_features,
-            'total_features': train_dataset.feature_size
-        }
+        # Print feature information
+        print(f"Feature configuration:")
+        print(f"Time windows: {train_dataset.time_windows}")
+        print(f"Base features: {len(train_dataset.base_features)}")
+        print(f"Total features per window: {len(train_dataset.base_features) + 5}")
+        print(f"Expected total features: {train_dataset.feature_size}")
         
-        with open('checkpoints/feature_config.json', 'w') as f:
-            json.dump(feature_config, f, indent=4)
-        
+        # Create validation dataset using training scalers
+        print("Creating validation dataset...")
         val_dataset = TimePeakDataset(
             val_df,
             scaler=train_dataset.scalers,
@@ -316,6 +314,7 @@ def main():
         )
         
         # Create data loaders
+        print("Creating data loaders...")
         train_loader = DataLoader(
             train_dataset,
             batch_size=32,
@@ -332,12 +331,13 @@ def main():
             pin_memory=True
         )
         
-        # Calculate feature size
+        # Verify feature dimensions
         sample = next(iter(train_loader))
         feature_size = sample['features'].shape[1]
+        print(f"Actual feature size from loader: {feature_size}")
         
-        print(f"Feature size: {feature_size}")
-        print(f"Time windows being used: {train_dataset.time_windows}")
+        if feature_size != train_dataset.feature_size:
+            raise ValueError(f"Feature size mismatch! Expected {train_dataset.feature_size} but got {feature_size}")
         
         # Initialize model
         print("Initializing model...")
@@ -346,6 +346,7 @@ def main():
             hidden_size=256,
             dropout_rate=0.4
         )
+        
         
         # Train model
         print("Starting training...")

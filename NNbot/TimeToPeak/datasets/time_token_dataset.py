@@ -148,28 +148,51 @@ class TimePeakDataset(Dataset):
     def _extract_features_until_time(self, token_data, current_time):
         """
         Extract all features that would be available at the current timestamp.
-        Only uses data from time windows that have completed by current_time.
+        Always returns the full feature vector, padding with zeros for unavailable windows.
         """
         features = []
         
+        # Calculate total expected features per window
+        features_per_window = len(self.base_features) + 5  # base features + calculated features
+        
         # Extract features for each time window
         for window in self.time_windows:
-            # Only include windows that have completed
+            window_features = []
+            
+            # Add base features
+            for feature in self.base_features:
+                col_name = f"{feature}_0to{window}s"
+                if current_time >= window and col_name in token_data:
+                    window_features.append(float(token_data.get(col_name, 0)))
+                else:
+                    window_features.append(0.0)
+            
+            # Add calculated features
             if current_time >= window:
-                for feature in self.base_features:
-                    col_name = f"{feature}_0to{window}s"
-                    if col_name in token_data:
-                        features.append(token_data[col_name])
-                    else:
-                        features.append(0)
-                        
-                # Add calculated features using only past data
                 try:
-                    window_features = self._calculate_window_features(token_data, window, current_time)
-                    features.extend(window_features)
+                    calc_features = self._calculate_window_features(token_data, window, current_time)
+                    window_features.extend(calc_features)
                 except Exception as e:
-                    print(f"Error calculating window features: {e}")
-                    features.extend([0] * 5)  # Placeholder for missing features
+                    print(f"Error calculating window features for window {window}: {e}")
+                    window_features.extend([0.0] * 5)
+            else:
+                window_features.extend([0.0] * 5)
+            
+            features.extend(window_features)
+        
+        # Verify feature count
+        expected_features = len(self.time_windows) * features_per_window
+        actual_features = len(features)
+        
+        if actual_features != expected_features:
+            print(f"Feature mismatch! Expected {expected_features} but got {actual_features}")
+            print("Time windows:", self.time_windows)
+            print("Base features:", len(self.base_features))
+            # Pad or truncate to match expected size
+            if actual_features < expected_features:
+                features.extend([0.0] * (expected_features - actual_features))
+            else:
+                features = features[:expected_features]
         
         return np.array(features).reshape(1, -1)
     
