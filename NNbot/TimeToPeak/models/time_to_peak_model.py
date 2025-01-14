@@ -30,7 +30,18 @@ class PeakPredictor(nn.Module):
             nn.LayerNorm(hidden_size),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size, self.attention_dim),  # Match attention dimension
+            
+            nn.Linear(hidden_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size, self.attention_dim),
             nn.LayerNorm(self.attention_dim),
             nn.GELU(),
             nn.Dropout(dropout_rate)
@@ -38,7 +49,17 @@ class PeakPredictor(nn.Module):
         
         # Global feature processor
         self.global_processor = nn.Sequential(
-            nn.Linear(2, self.attention_dim),  # Match attention dimension
+            nn.Linear(2, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 2, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 2, self.attention_dim),
             nn.LayerNorm(self.attention_dim),
             nn.GELU(),
             nn.Dropout(dropout_rate)
@@ -47,27 +68,49 @@ class PeakPredictor(nn.Module):
         # Combine features across time windows using attention
         self.attention = nn.MultiheadAttention(
             embed_dim=self.attention_dim,
-            num_heads=4,
+            num_heads=8,
             dropout=dropout_rate,
             batch_first=True
         )
         
         # Peak prediction head
         self.peak_predictor = nn.Sequential(
-            nn.Linear(self.attention_dim, self.attention_dim // 2),
-            nn.LayerNorm(self.attention_dim // 2),
+            nn.Linear(self.attention_dim, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(self.attention_dim // 2, 1)  # Binary classification
+            
+            nn.Linear(hidden_size // 2, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.LayerNorm(hidden_size // 4),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 4, 1)  # Binary classification
         )
         
         # Confidence predictor
         self.confidence_predictor = nn.Sequential(
-            nn.Linear(self.attention_dim, self.attention_dim // 2),
-            nn.LayerNorm(self.attention_dim // 2),
+            nn.Linear(self.attention_dim, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(self.attention_dim // 2, 1)
+            
+            nn.Linear(hidden_size // 2, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.LayerNorm(hidden_size // 4),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            
+            nn.Linear(hidden_size // 4, 1)
         )
     
     def forward(self, features, global_features):
@@ -305,7 +348,7 @@ def main():
         print("Initializing model...")
         model = PeakPredictor(
             feature_size=feature_size,
-            hidden_size=256,
+            hidden_size=512,
             dropout_rate=0.4
         )
         
