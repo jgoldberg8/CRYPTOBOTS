@@ -120,7 +120,9 @@ class MultiGranularTokenDataset(Dataset):
         
         for token_data in token_groups:  # Iterate directly over token groups
             # Sort by time sequence (time_to_peak descending means forward in time)
+            
             token_data = token_data.sort_values('time_to_peak', ascending=False)
+            print(token_data)
             mint = token_data['mint'].iloc[0]  # Get the mint from the first row
             
             # Add momentum features if they weren't added yet
@@ -152,7 +154,6 @@ class MultiGranularTokenDataset(Dataset):
                 'target_info': target_info,
                 'token': mint
             })
-            print(processed_data)
         return processed_data
     
     def _extract_granularity_features(self, df, granularity):
