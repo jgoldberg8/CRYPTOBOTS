@@ -80,7 +80,7 @@ class RealTimeEvaluator:
         true_peak = token_df['time_to_peak'].iloc[0]
         
         # print(f"\n=== Evaluating Token: {mint} ===")
-        # print(f"True peak time: {true_peak}")
+        print(f"True peak time: {true_peak}")
         
         # Global features to include
         global_features = {
