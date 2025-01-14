@@ -4,7 +4,7 @@ from sklearn.preprocessing import RobustScaler
 import torch
 from torch.utils.data import Dataset
 
-class TimePeakDataset(Dataset):
+class TokenPeakDataset(Dataset):
     def __init__(self, df, scaler=None, train=True, initial_window=30):
         """
         Dataset for peak prediction using historical token data.
@@ -36,7 +36,7 @@ class TimePeakDataset(Dataset):
         ]
         
         # All available time windows for features
-        self.time_windows = [5, 10, 20, 30, 60]  # Short time windows for quick reactions
+        self.time_windows = [5, 10, 20, 30]  # Short time windows for quick reactions
         
         # Initialize or load scalers
         if train:
@@ -66,12 +66,36 @@ class TimePeakDataset(Dataset):
         """
         processed_data = []
         
-        # Process each token
-        for _, token_data in self.df.iterrows():
+        # Process each token with progress bar
+        from tqdm import tqdm
+        for _, token_data in tqdm(self.df.iterrows(), desc="Processing tokens", total=len(self.df)):
             time_to_peak = token_data['time_to_peak']
             
-            # Create prediction points between initial_window and 1020s
-            timestamps = np.arange(self.initial_window, 1020, 5)  # Sample every 5 seconds
+            # Generate prediction timestamps with adaptive sampling
+            timestamps = []
+            
+            # Early phase: Sample every 5s (critical early peaks)
+            timestamps.extend(range(self.initial_window, min(200, int(time_to_peak) + 40), 5))
+            
+            # Medium phase: Sample every 10s
+            timestamps.extend(range(200, min(500, int(time_to_peak) + 40), 10))
+            
+            # Late phase: Sample every 20s
+            timestamps.extend(range(500, min(1020, int(time_to_peak) + 40), 20))
+            
+            # Always include points around the actual peak
+            peak_vicinity = [
+                max(self.initial_window, time_to_peak - 15),
+                max(self.initial_window, time_to_peak - 10),
+                max(self.initial_window, time_to_peak - 5),
+                time_to_peak,
+                min(1020, time_to_peak + 5),
+                min(1020, time_to_peak + 10),
+                min(1020, time_to_peak + 15)
+            ]
+            
+            timestamps.extend(peak_vicinity)
+            timestamps = sorted(list(set(timestamps)))  # Remove duplicates and sort
             
             for t in timestamps:
                 # Get features available up to this timestamp
@@ -140,40 +164,54 @@ class TimePeakDataset(Dataset):
         """Calculate additional features for a time window using only past data"""
         features = []
         
-        # Price momentum (using only past data)
+        # Price acceleration (rate of change of price changes)
         price_cols = [f"price_volatility_0to{w}s" for w in range(window, current_time, window)]
-        if price_cols:
-            price_momentum = sum([token_data[col] for col in price_cols if col in token_data]) / len(price_cols)
+        if len(price_cols) >= 2:
+            price_changes = [token_data[col] for col in price_cols if col in token_data]
+            price_acceleration = [price_changes[i] - price_changes[i-1] for i in range(1, len(price_changes))]
+            avg_acceleration = sum(price_acceleration) / len(price_acceleration) if price_acceleration else 0
         else:
-            price_momentum = 0
-        features.append(price_momentum)
+            avg_acceleration = 0
+        features.append(avg_acceleration)
         
-        # Volume momentum
+        # Volume concentration (how much volume in recent windows vs overall)
         volume_cols = [f"volume_0to{w}s" for w in range(window, current_time, window)]
         if volume_cols:
-            volume_momentum = sum([token_data[col] for col in volume_cols if col in token_data]) / len(volume_cols)
+            recent_volume = sum([token_data[col] for col in volume_cols[-3:] if col in token_data])  # Last 3 windows
+            total_volume = sum([token_data[col] for col in volume_cols if col in token_data])
+            volume_concentration = recent_volume / (total_volume + 1e-8)
         else:
-            volume_momentum = 0
-        features.append(volume_momentum)
+            volume_concentration = 0
+        features.append(volume_concentration)
         
-        # Trading intensity
+        # Buy pressure trend and acceleration
+        pressure_cols = [f"buy_pressure_0to{w}s" for w in range(window, current_time, window)]
+        if len(pressure_cols) >= 2:
+            pressures = [token_data[col] for col in pressure_cols if col in token_data]
+            pressure_changes = [pressures[i] - pressures[i-1] for i in range(1, len(pressures))]
+            pressure_acceleration = sum(pressure_changes) / len(pressure_changes)
+        else:
+            pressure_acceleration = 0
+        features.append(pressure_acceleration)
+        
+        # Wallet concentration (unique wallets vs transaction count)
         tx_cols = [f"transaction_count_0to{w}s" for w in range(window, current_time, window)]
         wallet_cols = [f"unique_wallets_0to{w}s" for w in range(window, current_time, window)]
         if tx_cols and wallet_cols:
-            tx_sum = sum([token_data[col] for col in tx_cols if col in token_data])
-            wallet_sum = sum([token_data[col] for col in wallet_cols if col in token_data]) + 1
-            trade_intensity = tx_sum / wallet_sum
+            recent_tx = sum([token_data[col] for col in tx_cols[-3:] if col in token_data])
+            recent_wallets = sum([token_data[col] for col in wallet_cols[-3:] if col in token_data]) + 1
+            wallet_concentration = recent_tx / recent_wallets
         else:
-            trade_intensity = 0
-        features.append(trade_intensity)
+            wallet_concentration = 0
+        features.append(wallet_concentration)
         
-        # Buy pressure trend
-        pressure_cols = [f"buy_pressure_0to{w}s" for w in range(window, current_time, window)]
-        if pressure_cols:
-            pressure_trend = sum([token_data[col] for col in pressure_cols if col in token_data]) / len(pressure_cols)
+        # Momentum indicators
+        momentum_cols = [f"momentum_0to{w}s" for w in range(window, current_time, window)]
+        if momentum_cols:
+            recent_momentum = sum([token_data[col] for col in momentum_cols[-3:] if col in token_data]) / 3
         else:
-            pressure_trend = 0
-        features.append(pressure_trend)
+            recent_momentum = 0
+        features.append(recent_momentum)
         
         return features
     
