@@ -133,10 +133,10 @@ class RealTimeEvaluator:
                 if matching_cols:
                     features_dict[matching_cols[0]] = token_df[matching_cols[0]].iloc[0]
             
-            print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
-            print("Collected feature columns:")
-            for col in features_dict.keys():
-                print(col)
+            # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
+            # print("Collected feature columns:")
+            # for col in features_dict.keys():
+            #     print(col)
             
             # Need minimum number of features before making prediction
             time_window_features = [
@@ -145,7 +145,7 @@ class RealTimeEvaluator:
             ]
             
             if len(time_window_features) < 17 * 2:  # 4 granularities
-                print(f"Not enough time window features: {len(time_window_features)}")
+                # print(f"Not enough time window features: {len(time_window_features)}")
                 continue
             
             # Prepare features and make prediction
@@ -164,10 +164,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    print(f"Prediction details at time {current_time}:")
-                    print(f"Hazard score: {hazard_score}")
-                    print(f"Confidence score: {confidence_score}")
-                    print(f"Predicted time: {predicted_time}")
+                    # print(f"Prediction details at time {current_time}:")
+                    # print(f"Hazard score: {hazard_score}")
+                    # print(f"Confidence score: {confidence_score}")
+                    # print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
