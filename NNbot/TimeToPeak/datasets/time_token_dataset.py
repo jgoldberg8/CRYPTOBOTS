@@ -111,37 +111,44 @@ class TimePeakDataset(Dataset):
             timestamps = sorted(list(set(timestamps)))  # Remove duplicates and sort
             
             for t in timestamps:
-                # Get features available up to this timestamp
-                features = self._extract_features_until_time(token_data, t)
-                
-                if fit:
-                    features = self.scalers['features'].fit_transform(features)
-                else:
-                    features = self.scalers['features'].transform(features)
-                
-                # Global token features (available from start)
-                global_features = np.array([[
-                    token_data['initial_investment_ratio'],
-                    token_data['initial_market_cap']
-                ]])
-                
-                if fit:
-                    global_features = self.scalers['global'].fit_transform(global_features)
-                else:
-                    global_features = self.scalers['global'].transform(global_features)
-                
-                # Label: 1 if this is the peak time (within a small window), 0 otherwise
-                # Add some tolerance around the peak time
-                is_peak = abs(t - time_to_peak) <= 5  # 5 second tolerance
-                
-                processed_data.append({
-                    'features': features,
-                    'global_features': global_features,
-                    'is_peak': is_peak,
-                    'timestamp': t,
-                    'time_to_peak': time_to_peak,  # Store for analysis
-                    'mask': True  # All points after initial_window are valid
-                })
+                try:
+                    # Get features available up to this timestamp
+                    features = self._extract_features_until_time(token_data, t)
+                    
+                    if fit:
+                        features = self.scalers['features'].fit_transform(features)
+                    else:
+                        features = self.scalers['features'].transform(features)
+                    
+                    # Global token features (available from start)
+                    global_features = np.array([[
+                        token_data['initial_investment_ratio'],
+                        token_data['initial_market_cap']
+                    ]])
+                    
+                    if fit:
+                        global_features = self.scalers['global'].fit_transform(global_features)
+                    else:
+                        global_features = self.scalers['global'].transform(global_features)
+                    
+                    # Label: 1 if this is the peak time (within a small window), 0 otherwise
+                    is_peak = abs(t - time_to_peak) <= 5  # 5 second tolerance
+                    
+                    processed_data.append({
+                        'features': features,
+                        'global_features': global_features,
+                        'is_peak': is_peak,
+                        'timestamp': t,
+                        'time_to_peak': time_to_peak,
+                        'mask': True  # All points after initial_window are valid
+                    })
+                    
+                except Exception as e:
+                    print(f"Error processing timestamp {t} for token: {e}")
+                    continue
+        
+        if not processed_data:
+            raise ValueError("No valid samples were generated during preprocessing")
         
         return processed_data
     
@@ -154,6 +161,7 @@ class TimePeakDataset(Dataset):
         
         # Calculate total expected features per window
         features_per_window = len(self.base_features) + 5  # base features + calculated features
+        total_expected_features = len(self.time_windows) * features_per_window
         
         # Extract features for each time window
         for window in self.time_windows:
@@ -180,22 +188,22 @@ class TimePeakDataset(Dataset):
             
             features.extend(window_features)
         
-        # Verify feature count
-        expected_features = len(self.time_windows) * features_per_window
-        actual_features = len(features)
-        
-        if actual_features != expected_features:
-            print(f"Feature mismatch! Expected {expected_features} but got {actual_features}")
-            print("Time windows:", self.time_windows)
-            print("Base features:", len(self.base_features))
-            # Pad or truncate to match expected size
-            if actual_features < expected_features:
-                features.extend([0.0] * (expected_features - actual_features))
+        # Ensure we have exactly the expected number of features
+        if len(features) != total_expected_features:
+            print(f"Warning: Feature count mismatch. Expected {total_expected_features}, got {len(features)}")
+            if len(features) < total_expected_features:
+                features.extend([0.0] * (total_expected_features - len(features)))
             else:
-                features = features[:expected_features]
+                features = features[:total_expected_features]
         
-        return np.array(features).reshape(1, -1)
-    
+        # Reshape to proper dimensions (1, n_features)
+        features_array = np.array(features, dtype=np.float32).reshape(1, -1)
+        
+        if features_array.shape[1] != self.feature_size:
+            raise ValueError(f"Feature dimension mismatch! Expected {self.feature_size}, got {features_array.shape[1]}")
+        
+        return features_array
+        
     def _calculate_window_features(self, token_data, window, current_time):
         """
         Calculate additional features for a time window using only past data
