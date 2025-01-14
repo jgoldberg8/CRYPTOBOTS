@@ -80,68 +80,63 @@ class RealTimeEvaluator:
         true_peak = token_df['time_to_peak'].iloc[0]
         
         # print(f"\n=== Evaluating Token: {mint} ===")
-        print(f"True peak time: {true_peak}")
-        
-        # Global features to include
-        global_features = {
-            'initial_investment_ratio': token_df['initial_investment_ratio'].iloc[0],
-            'initial_market_cap': token_df['initial_market_cap'].iloc[0],
-            'peak_market_cap': token_df['peak_market_cap'].iloc[0],
-            'time_to_peak': true_peak
-        }
+        # print(f"True peak time: {true_peak}")
         
         # Track state
-        current_time = 0
         final_prediction = None
-        features_dict = global_features.copy()
+        prediction_history = []
         
-        # Base features to collect
-        base_features = [
-            'transaction_count', 'buy_pressure', 'volume', 'rsi', 
-            'price_volatility', 'volume_volatility', 'momentum', 
-            'trade_amount_variance', 'transaction_rate', 
-            'trade_concentration', 'unique_wallets'
-        ]
+        # Get time windows from column names
+        time_windows = sorted([
+            int(col.split('to')[1].replace('s', '')) 
+            for col in token_df.columns 
+            if '0to' in col and col.startswith('transaction_count')
+        ])
         
-        # Granularity windows to consider
-        windows = ['5s', '10s', '20s', '30s']  # Add more if needed
-        
-        # Simulate time progression in 5-second intervals
-        while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
-            current_time += 5
-            
-            # Skip prediction during initial data collection
-            if current_time <= self.initial_window:
-                continue
-            
-            # Update available features
-            for feature in base_features:
-                for window in windows:
-                    col_name = f'{feature}_0to{window}'
-                    if col_name in token_df.columns:
-                        features_dict[col_name] = token_df[col_name].iloc[0]
-            
-            # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
-            
-            # Need minimum number of features before making prediction
-            time_window_features = [
-                col for col in features_dict.keys() 
-                if '0to' in col and any(window in col for window in windows)
+        # Simulate time progression
+        for current_time in range(5, max(time_windows), 5):
+            # Select features up to current time
+            valid_cols = [
+                'mint',
+                *[col for col in token_df.columns 
+                if '0to' in col and int(col.split('to')[1].replace('s', '')) <= current_time]
             ]
             
-            if len(time_window_features) < 17 * 2:  # 4 granularities
-                print(f"Not enough time window features: {len(time_window_features)}")
-                continue
+            # Prepare features for current time window
+            current_df = token_df[valid_cols].copy()
             
-            # Prepare features and make prediction
+            # Preprocess features using dataset's method
             try:
-                batch = self.prepare_features(features_dict, current_time, mint)
+                processed_data = MultiGranularTokenDataset(
+                    current_df, 
+                    scaler=self.scaler,
+                    train=False
+                )._preprocess_data([current_df], fit=False)
+                
+                # Get the first (and only) processed sample
+                processed_sample = processed_data[0]
+                
+                # Prepare batch for model
+                batch = {
+                    'global_features': torch.FloatTensor(processed_sample['global_features']).view(-1, 4),
+                    'time_to_peak': torch.FloatTensor(processed_sample['target_info']['time_to_peak']).view(-1, 1),
+                    'peak_proximity': torch.FloatTensor(processed_sample['target_info']['peak_proximity']).view(-1, 1),
+                    'mask': torch.FloatTensor(processed_sample['target_info']['mask']).view(-1, 1),
+                    'sample_weights': torch.FloatTensor(processed_sample['target_info']['sample_weights']).view(-1, 1)
+                }
+                
+                # Add features for each granularity
+                for i, gran in enumerate(['5s', '10s', '20s', '30s']):
+                    batch[f'features_{i}'] = torch.FloatTensor(processed_sample['features'][gran]).view(-1, 17)
+                
+                # Move to device and add batch dimension
+                batch = {k: v.unsqueeze(0).to(self.device) for k, v in batch.items()}
+            
             except Exception as e:
                 print(f"Error preparing features for {mint} at time {current_time}: {str(e)}")
                 continue
 
-            # Rest of the method remains the same...
-
+            # Make prediction
             with torch.no_grad():
                 try:
                     hazard_prob, time_pred, confidence = self.model(batch)
@@ -151,13 +146,21 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    print(f"Prediction details:")
-                    print(f"Hazard score: {hazard_score}")
-                    print(f"Confidence score: {confidence_score}")
-                    print(f"Predicted time: {predicted_time}")
+                    prediction = {
+                        'time': current_time,
+                        'predicted_peak': predicted_time,
+                        'hazard_score': hazard_score,
+                        'confidence_score': confidence_score
+                    }
+                    prediction_history.append(prediction)
                     
-                    # Make final prediction if confident enough
-                    if confidence_score > 0.8 or hazard_score > 0.7:
+                    print(f"Prediction at {current_time}s:")
+                    print(f"  Predicted Peak: {predicted_time:.2f}s")
+                    print(f"  Hazard Score: {hazard_score:.4f}")
+                    print(f"  Confidence: {confidence_score:.4f}")
+                    
+                    # Criteria for final prediction
+                    if (confidence_score > 0.8 or hazard_score > 0.7):
                         final_prediction = {
                             'mint': mint,
                             'predicted_time': predicted_time,
@@ -167,10 +170,15 @@ class RealTimeEvaluator:
                             'prediction_made_at': current_time
                         }
                         break
+                    
+                    # Stop if prediction time exceeds true peak
+                    if current_time > true_peak:
+                        break
+                    
                 except Exception as e:
                     print(f"Prediction error: {str(e)}")
         
-        # Add results to tracking lists if final_prediction exists
+        # Add results to tracking lists
         if final_prediction:
             self.predictions[mint] = final_prediction
             self.true_values.append(final_prediction['true_time'])
@@ -178,6 +186,9 @@ class RealTimeEvaluator:
             self.prediction_times.append(final_prediction['prediction_made_at'])
         else:
             print(f"No final prediction made for token: {mint}")
+    
+    # Optional: return prediction history for further analysis
+        return prediction_history
     
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset"""
