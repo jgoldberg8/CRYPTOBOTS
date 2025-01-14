@@ -8,9 +8,6 @@ class TimePeakDataset(Dataset):
     def __init__(self, df, scaler=None, train=True, initial_window=30):
         """
         Dataset for peak prediction using historical token data.
-        Each token has complete data from 0-1020s, but predictions simulate
-        real-time conditions by only using data available up to each timestamp.
-        
         Args:
             df: DataFrame with complete token history (0-1020s)
             scaler: Optional pre-fit scaler for validation data
@@ -36,7 +33,10 @@ class TimePeakDataset(Dataset):
         ]
         
         # All available time windows for features
-        self.time_windows = [5, 10, 20, 30, 60]  # Short time windows for quick reactions
+        self.time_windows = [5, 10, 20, 30, 60]  # Including 60s window
+        
+        # Calculate expected feature size
+        self.feature_size = len(self.time_windows) * (len(self.base_features) + 5)  # base features + calculated features
         
         # Initialize or load scalers
         if train:
@@ -44,11 +44,24 @@ class TimePeakDataset(Dataset):
                 self.scalers = self._init_scalers()
                 self.data = self._preprocess_data(fit=True)
             else:
+                # Verify scaler compatibility
+                if hasattr(scaler['features'], 'n_features_in_'):
+                    if scaler['features'].n_features_in_ != self.feature_size:
+                        raise ValueError(
+                            f"Scaler expects {scaler['features'].n_features_in_} features, "
+                            f"but current configuration produces {self.feature_size} features"
+                        )
                 self.scalers = scaler
                 self.data = self._preprocess_data(fit=False)
         else:
             if scaler is None:
                 raise ValueError("Scaler must be provided for validation/test data")
+            # Verify scaler compatibility
+            if scaler['features'].n_features_in_ != self.feature_size:
+                raise ValueError(
+                    f"Scaler expects {scaler['features'].n_features_in_} features, "
+                    f"but current configuration produces {self.feature_size} features"
+                )
             self.scalers = scaler
             self.data = self._preprocess_data(fit=False)
     
