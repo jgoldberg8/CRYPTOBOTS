@@ -152,7 +152,7 @@ class MultiGranularTokenDataset(Dataset):
                 'target_info': target_info,
                 'token': mint
             })
-        
+            print(processed_data)
         return processed_data
     
     def _extract_granularity_features(self, df, granularity):
