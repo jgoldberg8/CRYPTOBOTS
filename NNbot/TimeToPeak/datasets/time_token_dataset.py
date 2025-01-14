@@ -114,8 +114,7 @@ class TimePeakDataset(Dataset):
                 try:
                     # Get features available up to this timestamp
                     features = self._extract_features_until_time(token_data, t)
-                    print("\n\n\n")
-                    print(features)
+                   
                     
                     if fit:
                         features = self.scalers['features'].fit_transform(features).astype(np.float32)
@@ -180,8 +179,11 @@ class TimePeakDataset(Dataset):
             window_features = []
             
             # Add base features
+            print("window" + str(window) + "\n\n\n\n")
             for feature in self.base_features:
                 col_name = f"{feature}_0to{window}s"
+                print("\n\n\n")
+                print(col_name)
                 if current_time >= window and col_name in token_data:
                     window_features.append(float(token_data.get(col_name, 0)))
                 else:
