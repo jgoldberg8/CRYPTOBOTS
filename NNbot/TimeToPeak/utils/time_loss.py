@@ -76,12 +76,14 @@ class PeakPredictionLoss(nn.Module):
             true_peak_times: True peak times (batch_size, 1)
             mask: Mask for valid predictions (batch_size, 1)
         """
-        # Ensure all tensors are properly shaped
-        peak_logits = peak_logits.squeeze()
-        confidence_logits = confidence_logits.squeeze()
-        timestamps = timestamps.squeeze()
-        true_peak_times = true_peak_times.squeeze()
-        mask = mask.squeeze()
+        # Ensure all tensors are properly shaped and converted to float
+        peak_logits = peak_logits.float().squeeze()
+        confidence_logits = confidence_logits.float().squeeze()
+        timestamps = timestamps.float().squeeze()
+        true_peak_times = true_peak_times.float().squeeze()
+        
+        # Convert mask to boolean tensor
+        mask = mask.bool().squeeze()
 
         # Debug prints
         print("Debug: peak_logits shape", peak_logits.shape)
