@@ -79,8 +79,8 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        print(f"\n=== Evaluating Token: {mint} ===")
-        print(f"True peak time: {true_peak}")
+        # print(f"\n=== Evaluating Token: {mint} ===")
+        # print(f"True peak time: {true_peak}")
         
         # Global features to include
         global_features = {
@@ -132,10 +132,10 @@ class RealTimeEvaluator:
                 if matching_cols:
                     features_dict[matching_cols[0]] = token_df[matching_cols[0]].iloc[0]
             
-            print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
-            print("Collected feature columns:")
-            for col in features_dict.keys():
-                print(col)
+            # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
+            # print("Collected feature columns:")
+            # for col in features_dict.keys():
+            #     print(col)
             
             # Need minimum number of features before making prediction
             time_window_features = [
