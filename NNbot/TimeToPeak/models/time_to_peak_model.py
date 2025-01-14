@@ -103,7 +103,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = PeakPredictionLoss()
-    scaler = GradScaler(device_type='cuda')  # Updated GradScaler
+    scaler = GradScaler()  # Updated GradScaler
     
     best_val_loss = float('inf')
     patience = 15
