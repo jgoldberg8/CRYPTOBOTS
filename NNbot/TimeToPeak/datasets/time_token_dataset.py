@@ -114,6 +114,8 @@ class TimePeakDataset(Dataset):
                 try:
                     # Get features available up to this timestamp
                     features = self._extract_features_until_time(token_data, t)
+                    print("\n\n\n")
+                    print(features)
                     
                     if fit:
                         features = self.scalers['features'].fit_transform(features).astype(np.float32)
