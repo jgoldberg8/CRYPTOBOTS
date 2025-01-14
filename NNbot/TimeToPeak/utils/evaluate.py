@@ -12,12 +12,13 @@ from sklearn.metrics import confusion_matrix, classification_report
 from TimeToPeak.datasets.time_token_dataset import TimePeakDataset
 from TimeToPeak.models.time_to_peak_model import PeakPredictor, predict_peak
 
-def evaluate_model(model, dataset, device='cuda'):
+def evaluate_model(model, dataset, device='cuda', threshold=0.5):
     """Evaluate model performance and collect predictions"""
     true_peaks = []
     predicted_peaks = []
     confidences = []
     tokens = []
+    all_probs = []  # Track all probabilities
     
     model.eval()
     
@@ -29,15 +30,35 @@ def evaluate_model(model, dataset, device='cuda'):
         peak_prob, confidence = predict_peak(model, features, global_features, device)
         
         true_peaks.append(sample['time_to_peak'].item())
-        predicted_peaks.append(sample['timestamp'].item() if peak_prob > 0.5 else None)
+        predicted_peaks.append(sample['timestamp'].item() if peak_prob > threshold else None)
         confidences.append(confidence)
-        tokens.append(idx)  # Using index as token identifier
+        tokens.append(idx)
+        all_probs.append(peak_prob)
+    
+    # Print probability distribution info
+    probs = np.array(all_probs)
+    print("\nProbability Distribution:")
+    print(f"Min prob: {probs.min():.4f}")
+    print(f"Max prob: {probs.max():.4f}")
+    print(f"Mean prob: {probs.mean():.4f}")
+    print(f"Median prob: {np.median(probs):.4f}")
+    print(f"Std prob: {probs.std():.4f}")
+    print(f"\nPercentiles:")
+    for p in [10, 25, 50, 75, 90, 95, 99]:
+        print(f"{p}th percentile: {np.percentile(probs, p):.4f}")
+    
+    # Try different thresholds
+    print("\nPredictions at different thresholds:")
+    for t in [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]:
+        n_predictions = sum(1 for p in probs if p > t)
+        print(f"Threshold {t:.2f}: {n_predictions} predictions ({n_predictions/len(probs)*100:.2f}%)")
     
     return {
         'true_peaks': true_peaks,
         'predicted_peaks': predicted_peaks,
         'confidences': confidences,
-        'tokens': tokens
+        'tokens': tokens,
+        'probabilities': all_probs
     }
 
 def plot_peak_comparison(results, save_path):
@@ -148,6 +169,7 @@ def main():
         model = PeakPredictor(
             feature_size=training_info['model_config']['feature_size'],
             hidden_size=training_info['model_config']['hidden_size'],
+            num_time_windows=training_info['model_config']['num_time_windows'],
             dropout_rate=training_info['model_config']['dropout_rate']
         )
         
@@ -167,13 +189,15 @@ def main():
         # Create dataset
         test_dataset = TimePeakDataset(test_df, scaler=scalers, train=False)
         
-        # Evaluate model
+        # Evaluate model with different thresholds
         logger.info("Evaluating model...")
-        results = evaluate_model(model, test_dataset, device)
-        
-        # Calculate metrics
-        logger.info("Calculating metrics...")
-        metrics = calculate_metrics(results)
+        for threshold in [0.1, 0.2, 0.3, 0.4, 0.5]:
+            logger.info(f"\nEvaluating with threshold {threshold}:")
+            results = evaluate_model(model, test_dataset, device, threshold)
+            
+            # Calculate metrics
+            logger.info("Calculating metrics...")
+            metrics = calculate_metrics(results)
         
         # Save metrics
         with open('results/evaluation_metrics.json', 'w') as f:
@@ -186,18 +210,13 @@ def main():
         logger.info("Generating plots...")
         plot_peak_comparison(results, 'results/peak_comparison.png')
         
-        # Print summary with None value handling
+        # Print summary
         logger.info("\nEvaluation Results:")
         logger.info(f"Classification Report:\n{metrics['classification_report']}")
         logger.info("\nTiming Statistics:")
-        
-        mean_error = metrics['timing_stats']['mean_error']
-        median_error = metrics['timing_stats']['median_error']
-        std_error = metrics['timing_stats']['std_error']
-        
-        logger.info(f"Mean Error: {mean_error:.2f} seconds" if mean_error is not None else "Mean Error: No valid predictions")
-        logger.info(f"Median Error: {median_error:.2f} seconds" if median_error is not None else "Median Error: No valid predictions")
-        logger.info(f"Error Std Dev: {std_error:.2f} seconds" if std_error is not None else "Error Std Dev: No valid predictions")
+        logger.info(f"Mean Error: {metrics['timing_stats']['mean_error']:.2f} seconds")
+        logger.info(f"Median Error: {metrics['timing_stats']['median_error']:.2f} seconds")
+        logger.info(f"Error Std Dev: {metrics['timing_stats']['std_error']:.2f} seconds")
         
     except Exception as e:
         logger.error(f"Error during evaluation: {str(e)}", exc_info=True)
