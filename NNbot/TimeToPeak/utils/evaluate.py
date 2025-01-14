@@ -53,6 +53,9 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
+        print(f"Evaluating token: {mint}")
+        print(f"True peak time: {true_peak}")
+        
         # Track state
         current_time = 0
         final_prediction = None
@@ -66,6 +69,9 @@ class RealTimeEvaluator:
                             'momentum', 'trade_amount_variance', 'transaction_rate',
                             'trade_concentration', 'unique_wallets'
                         ]]
+        
+        print(f"Number of time window columns: {len(time_window_cols)}")
+        print("Time window columns:", time_window_cols)
         
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
@@ -87,7 +93,10 @@ class RealTimeEvaluator:
                     if end_time <= current_time:
                         features_dict[col] = token_df[col].iloc[0]
                 except ValueError:
+                    print(f"Error parsing time range for column: {col}")
                     continue
+            
+            print(f"Number of features collected at time {current_time}: {len(features_dict)}")
             
             # Need minimum number of features before making prediction
             if len(features_dict) < 17 * 2:  # 4 granularities
@@ -108,6 +117,11 @@ class RealTimeEvaluator:
                 confidence_score = torch.sigmoid(confidence).item()
                 predicted_time = time_pred.item()
                 
+                print(f"Prediction details:")
+                print(f"Hazard score: {hazard_score}")
+                print(f"Confidence score: {confidence_score}")
+                print(f"Predicted time: {predicted_time}")
+                
                 # Make final prediction if confident enough
                 if confidence_score > 0.8 or hazard_score > 0.7:
                     final_prediction = {
@@ -119,13 +133,15 @@ class RealTimeEvaluator:
                         'prediction_made_at': current_time
                     }
                     break
-    
+        
         # Add results to tracking lists if final_prediction exists
         if final_prediction:
             self.predictions[mint] = final_prediction
             self.true_values.append(final_prediction['true_time'])
             self.predicted_values.append(final_prediction['predicted_time'])
             self.prediction_times.append(final_prediction['prediction_made_at'])
+        else:
+            print(f"No final prediction made for token: {mint}")
     
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset"""
@@ -224,6 +240,6 @@ def main():
         evaluator.plot_results()
     else:
         print("No metrics could be calculated.")
-        
+
 if __name__ == "__main__":
     main()
