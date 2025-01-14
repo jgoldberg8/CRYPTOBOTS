@@ -37,8 +37,8 @@ class RealTimeEvaluator:
         # Add mint back to the features
         features_dict['mint'] = mint
         
-        # print("\n--- Preparing Features ---")
-        # print("Full features dictionary:")
+        print("\n--- Preparing Features ---")
+        print("Full features dictionary:")
         for k, v in features_dict.items():
             print(f"{k}: {v}")
         
@@ -49,8 +49,8 @@ class RealTimeEvaluator:
             print(f"DataFrame creation error: {e}")
             raise
         
-        # print("\nDataFrame columns:")
-        # print(df.columns)
+        print("\nDataFrame columns:")
+        print(df.columns)
         
         # Attempt to create dataset
         try:
@@ -73,14 +73,15 @@ class RealTimeEvaluator:
         # Move to device and add batch dimension
         batch = {k: v.unsqueeze(0).to(self.device) for k, v in sample.items()}
         return batch
-        
+
+
     def evaluate_token(self, token_df):
         """Simulate real-time evaluation of a single token"""
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        # print(f"\n=== Evaluating Token: {mint} ===")
-        # print(f"True peak time: {true_peak}")
+        print(f"\n=== Evaluating Token: {mint} ===")
+        print(f"True peak time: {true_peak}")
         
         # Global features to include
         global_features = {
@@ -102,11 +103,6 @@ class RealTimeEvaluator:
             'trade_concentration', 'unique_wallets'
         ]
         
-        # Detailed logging of available columns
-        # print("Available columns:")
-        # time_window_cols = [col for col in token_df.columns if '0to' in col]
-        # print(time_window_cols)
-        
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
             current_time += 5
@@ -120,34 +116,27 @@ class RealTimeEvaluator:
             
             # Update available features
             for feature in base_features:
-                # Find all columns for this feature with 0to prefix that are valid for current time
+                # Find all columns for this feature with 0to prefix
                 matching_cols = [
                     col for col in token_df.columns 
                     if col.startswith(f'{feature}_0to') and 
-                    '0to' in col
+                    int(col.split('0to')[1].replace('s','')) <= current_time
                 ]
                 
-                # Sort to get the most recent time window that ends before or at current_time
-                valid_cols = [
-                    col for col in matching_cols 
-                    if int(col.split('0to')[1].replace('s','')) <= current_time
-                ]
-                
-                # Sort by window size, largest first
-                valid_cols.sort(
+                # Sort to get the most recent time window
+                matching_cols.sort(
                     key=lambda x: int(x.split('0to')[1].replace('s','')), 
                     reverse=True
                 )
                 
                 # Add the most recent time window feature
-                if valid_cols:
-                    features_dict[valid_cols[0]] = token_df[valid_cols[0]].iloc[0]
+                if matching_cols:
+                    features_dict[matching_cols[0]] = token_df[matching_cols[0]].iloc[0]
             
             print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
             print("Collected feature columns:")
             for col in features_dict.keys():
-                if '0to' in col:
-                    print(col)
+                print(col)
             
             # Need minimum number of features before making prediction
             time_window_features = [
@@ -206,16 +195,7 @@ class RealTimeEvaluator:
             self.prediction_times.append(final_prediction['prediction_made_at'])
         else:
             print(f"No final prediction made for token: {mint}")
-    
-    def evaluate_dataset(self, test_df):
-        """Evaluate entire test dataset"""
-        print(f"Evaluating {len(test_df)} tokens...")
         
-        for _, token_df in tqdm(test_df.groupby('mint')):
-            self.evaluate_token(token_df)
-            
-        return self.calculate_metrics()
-    
     def calculate_metrics(self):
         """Calculate evaluation metrics"""
         if not self.true_values or not self.predicted_values:
