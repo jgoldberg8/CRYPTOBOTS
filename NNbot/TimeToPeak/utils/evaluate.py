@@ -120,12 +120,12 @@ class RealTimeEvaluator:
                     }
                     break
     
-    # Add results to tracking lists if final_prediction exists
-    if final_prediction:
-        self.predictions[mint] = final_prediction
-        self.true_values.append(final_prediction['true_time'])
-        self.predicted_values.append(final_prediction['predicted_time'])
-        self.prediction_times.append(final_prediction['prediction_made_at'])
+        # Add results to tracking lists if final_prediction exists
+        if final_prediction:
+            self.predictions[mint] = final_prediction
+            self.true_values.append(final_prediction['true_time'])
+            self.predicted_values.append(final_prediction['predicted_time'])
+            self.prediction_times.append(final_prediction['prediction_made_at'])
     
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset"""
