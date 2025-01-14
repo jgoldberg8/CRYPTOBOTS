@@ -322,7 +322,8 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
                 'val_loss': val_loss,
-                'train_loss': train_loss
+                'train_loss': train_loss,
+                'scaler': train_loader.dataset.scalers  # Add this line
             }, save_dir / 'best_model.pt')
         else:
             patience_counter += 1

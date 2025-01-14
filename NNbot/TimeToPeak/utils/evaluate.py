@@ -14,7 +14,23 @@ class RealTimeEvaluator:
     def __init__(self, model_path, initial_window=30):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.initial_window = initial_window
-        self.model = self._load_model(model_path)
+        self.checkpoint = torch.load(model_path, map_location=self.device)
+        self.model = self._load_model()
+        
+        # Load scaler from checkpoint or create a temporary training dataset to get scaler
+        if 'scaler' in self.checkpoint:
+            self.scaler = self.checkpoint['scaler']
+        else:
+            # Create a temporary training dataset to get the scaler
+            print("Scaler not found in checkpoint, creating temporary training dataset...")
+            # Use a small subset of test data to fit scaler
+            temp_train_dataset = MultiGranularTokenDataset(
+                test_df.head(100), 
+                scaler=None, 
+                train=True
+            )
+            self.scaler = temp_train_dataset.scalers
+        
         self.model.eval()
         
         # Statistics tracking
@@ -22,15 +38,15 @@ class RealTimeEvaluator:
         self.ground_truth = defaultdict(dict)
         self.prediction_times = defaultdict(list)
     
-    def _load_model(self, model_path):
-        checkpoint = torch.load(model_path, map_location=self.device)
+    def _load_model(self):
         model = RealTimePeakPredictor().to(self.device)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(self.checkpoint['model_state_dict'])
         return model
     
     def evaluate_token(self, token_df):
         """Evaluate a single token's data in simulated real-time"""
         dataset = MultiGranularTokenDataset(token_df, train=False, 
+                                          scaler=self.scaler,  # Pass the scaler
                                           initial_window=self.initial_window)
         
         mint = token_df['mint'].iloc[0]
@@ -195,7 +211,7 @@ class RealTimeEvaluator:
 
 def main():
     # Load test data
-    test_df = pd.read_csv('data/time-data.csv')
+    test_df = pd.read_csv('data/test_data.csv')
     test_df = clean_dataset(test_df)
     
     # Initialize evaluator
