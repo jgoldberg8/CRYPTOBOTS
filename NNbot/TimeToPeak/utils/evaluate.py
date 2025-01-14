@@ -224,3 +224,6 @@ def main():
         evaluator.plot_results()
     else:
         print("No metrics could be calculated.")
+        
+if __name__ == "__main__":
+    main()
