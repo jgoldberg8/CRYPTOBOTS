@@ -105,7 +105,7 @@ class RealTimeEvaluator:
             # print(f"Number of features collected at time {current_time}: {len(features_dict)}")
             
             # Need minimum number of features before making prediction
-            if len(features_dict) < 17 * 2:  # 4 granularities
+            # if len(features_dict) < 17 * 2:  # 4 granularities
                 continue
                 
             # Prepare features and make prediction
