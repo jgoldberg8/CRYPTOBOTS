@@ -79,8 +79,8 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        print(f"\n=== Evaluating Token: {mint} ===")
-        print(f"True peak time: {true_peak}")
+        # print(f"\n=== Evaluating Token: {mint} ===")
+        # print(f"True peak time: {true_peak}")
         
         # Global features to include
         global_features = {
@@ -121,7 +121,7 @@ class RealTimeEvaluator:
                     if col_name in token_df.columns:
                         features_dict[col_name] = token_df[col_name].iloc[0]
             
-            print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
+            # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
             
             # Need minimum number of features before making prediction
             time_window_features = [
@@ -151,10 +151,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    print(f"Prediction details:")
-                    print(f"Hazard score: {hazard_score}")
-                    print(f"Confidence score: {confidence_score}")
-                    print(f"Predicted time: {predicted_time}")
+                    # print(f"Prediction details:")
+                    # print(f"Hazard score: {hazard_score}")
+                    # print(f"Confidence score: {confidence_score}")
+                    # print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
