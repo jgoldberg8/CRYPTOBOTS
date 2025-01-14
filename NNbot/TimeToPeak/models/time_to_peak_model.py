@@ -179,11 +179,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             
             # Forward pass with autocast
             # Debug tensor shapes
-            print("Peak logits shape:", peak_logits.shape)
-            print("Confidence logits shape:", confidence_logits.shape)
-            print("Timestamps shape:", timestamps.shape)
-            print("Time to peak shape:", time_to_peak.shape)
-            print("Mask shape:", mask.shape)
+           
             with autocast(device_type='cuda'):
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
@@ -193,7 +189,11 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
                 time_to_peak,
                 mask
             )
-            
+            print("Peak logits shape:", peak_logits.shape)
+            print("Confidence logits shape:", confidence_logits.shape)
+            print("Timestamps shape:", timestamps.shape)
+            print("Time to peak shape:", time_to_peak.shape)
+            print("Mask shape:", mask.shape)
             # Backward pass with gradient scaling
             scaler.scale(loss).backward()
             scaler.step(optimizer)
