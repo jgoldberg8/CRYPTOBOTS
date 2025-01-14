@@ -68,15 +68,15 @@ class RealTimePeakPredictor(nn.Module):
         
         attention_output_size = (hidden_size // 2) * (num_granularities + 1)  # +1 for global features
         
-        # Hazard prediction head (probability of being at peak)
         self.hazard_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Sigmoid()
+            nn.Linear(hidden_size // 2, 1)  # Remove sigmoid
         )
+
+
         
         # Time-to-peak prediction head
         self.time_predictor = nn.Sequential(
@@ -88,14 +88,13 @@ class RealTimePeakPredictor(nn.Module):
             nn.Softplus()  # Ensures positive time predictions
         )
         
-        # Confidence prediction head
+        # Update the confidence predictor in __init__
         self.confidence_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 4),
             nn.LayerNorm(hidden_size // 4),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 4, 1),
-            nn.Sigmoid()
+            nn.Linear(hidden_size // 4, 1)  # Remove sigmoid
         )
     
     def forward(self, batch):
@@ -128,12 +127,12 @@ class RealTimePeakPredictor(nn.Module):
         # Flatten attended features
         flat_features = attended_features.reshape(batch_size, -1)
         
-        # Get predictions
-        hazard_prob = self.hazard_predictor(flat_features)
-        time_to_peak = self.time_predictor(flat_features)
-        confidence = self.confidence_predictor(flat_features)
+        # Get predictions (without sigmoid for hazard and confidence)
+        hazard_logits = self.hazard_predictor(flat_features)
+        time_to_peak = self.time_predictor(flat_features)  # Keep Softplus here
+        confidence_logits = self.confidence_predictor(flat_features)
         
-        return hazard_prob, time_to_peak, confidence
+        return hazard_logits, time_to_peak, confidence_logits
 
 
 

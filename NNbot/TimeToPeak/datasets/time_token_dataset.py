@@ -240,16 +240,17 @@ class MultiGranularTokenDataset(Dataset):
         """Get a single token's data"""
         token_data = self.data[idx]
         
+        # Ensure all tensors are properly reshaped
         sample = {
-            'global_features': torch.FloatTensor(token_data['global_features']),
-            'time_to_peak': torch.FloatTensor(token_data['target_info']['time_to_peak']),
-            'peak_proximity': torch.FloatTensor(token_data['target_info']['peak_proximity']),
-            'mask': torch.FloatTensor(token_data['target_info']['mask']),
-            'sample_weights': torch.FloatTensor(token_data['target_info']['sample_weights'])
+            'global_features': torch.FloatTensor(token_data['global_features']).view(-1, 4),
+            'time_to_peak': torch.FloatTensor(token_data['target_info']['time_to_peak']).view(-1, 1),
+            'peak_proximity': torch.FloatTensor(token_data['target_info']['peak_proximity']).view(-1, 1),
+            'mask': torch.FloatTensor(token_data['target_info']['mask']).view(-1, 1),
+            'sample_weights': torch.FloatTensor(token_data['target_info']['sample_weights']).view(-1, 1)
         }
         
-        # Add features for each granularity
+        # Add features for each granularity with proper shape
         for i, gran in enumerate(self.granularities):
-            sample[f'features_{i}'] = torch.FloatTensor(token_data['features'][gran])
+            sample[f'features_{i}'] = torch.FloatTensor(token_data['features'][gran]).view(-1, 17)  # 17 is input_size
         
         return sample

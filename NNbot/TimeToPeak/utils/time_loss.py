@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
 class PeakPredictionLoss(nn.Module):
     def __init__(self, hazard_weight=1.0, time_weight=1.5, confidence_weight=0.5):
         super().__init__()
@@ -43,8 +45,8 @@ class PeakPredictionLoss(nn.Module):
         sample_weights = sample_weights.view(batch_size, -1)
         
         # Calculate losses only for valid predictions
-        # Hazard prediction loss
-        hazard_loss = F.binary_cross_entropy(
+        # Use binary_cross_entropy_with_logits for hazard prediction
+        hazard_loss = F.binary_cross_entropy_with_logits(
             hazard_pred[valid_pred],
             peak_proximity[valid_pred],
             reduction='none'
@@ -64,9 +66,9 @@ class PeakPredictionLoss(nn.Module):
         relative_loss = (relative_error * sample_weights[valid_pred]).mean()
         time_loss = time_loss + 0.5 * relative_loss
         
-        # Confidence calibration
+        # Confidence calibration using BCE with logits
         confidence_target = torch.clamp(1 - relative_error.detach(), min=0.0, max=1.0)
-        confidence_loss = F.binary_cross_entropy(
+        confidence_loss = F.binary_cross_entropy_with_logits(
             confidence_pred[valid_pred],
             confidence_target,
             reduction='none'
@@ -79,12 +81,5 @@ class PeakPredictionLoss(nn.Module):
             self.time_weight * time_loss +
             self.confidence_weight * confidence_loss
         )
-        
-        # Print individual loss components
-        print(f"\nLoss components:")
-        print(f"Hazard loss: {hazard_loss.item():.4f}")
-        print(f"Time loss: {time_loss.item():.4f}")
-        print(f"Confidence loss: {confidence_loss.item():.4f}")
-        print(f"Total loss: {total_loss.item():.4f}")
         
         return total_loss
