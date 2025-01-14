@@ -102,6 +102,11 @@ class RealTimeEvaluator:
             'trade_concentration', 'unique_wallets'
         ]
         
+        # Detailed logging of available columns
+        # print("Available columns:")
+        # time_window_cols = [col for col in token_df.columns if '0to' in col]
+        # print(time_window_cols)
+        
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
             current_time += 5
@@ -115,27 +120,34 @@ class RealTimeEvaluator:
             
             # Update available features
             for feature in base_features:
-                # Find all columns for this feature with 0to prefix
+                # Find all columns for this feature with 0to prefix that are valid for current time
                 matching_cols = [
                     col for col in token_df.columns 
                     if col.startswith(f'{feature}_0to') and 
-                    int(col.split('0to')[1].replace('s','')) <= current_time
+                    '0to' in col
                 ]
                 
-                # Sort to get the most recent time window
-                matching_cols.sort(
+                # Sort to get the most recent time window that ends before or at current_time
+                valid_cols = [
+                    col for col in matching_cols 
+                    if int(col.split('0to')[1].replace('s','')) <= current_time
+                ]
+                
+                # Sort by window size, largest first
+                valid_cols.sort(
                     key=lambda x: int(x.split('0to')[1].replace('s','')), 
                     reverse=True
                 )
                 
                 # Add the most recent time window feature
-                if matching_cols:
-                    features_dict[matching_cols[0]] = token_df[matching_cols[0]].iloc[0]
+                if valid_cols:
+                    features_dict[valid_cols[0]] = token_df[valid_cols[0]].iloc[0]
             
-            # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
-            # print("Collected feature columns:")
-            # for col in features_dict.keys():
-            #     print(col)
+            print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
+            print("Collected feature columns:")
+            for col in features_dict.keys():
+                if '0to' in col:
+                    print(col)
             
             # Need minimum number of features before making prediction
             time_window_features = [
@@ -143,9 +155,9 @@ class RealTimeEvaluator:
                 if '0to' in col
             ]
             
-            # if len(time_window_features) < 17 * 2:  # 4 granularities
-            #     print(f"Not enough time window features: {len(time_window_features)}")
-            #     continue
+            if len(time_window_features) < 17 * 2:  # 4 granularities
+                print(f"Not enough time window features: {len(time_window_features)}")
+                continue
             
             # Prepare features and make prediction
             try:
