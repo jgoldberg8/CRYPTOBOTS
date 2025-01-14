@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 
 class FeatureExtractor(nn.Module):
     """Feature extraction module that processes multiple time granularities"""
-    def __init__(self, input_size, hidden_size=128, dropout_rate=0.3):
+    def __init__(self, input_size, hidden_size=256, dropout_rate=0.3):
         super().__init__()
         self.feature_net = nn.Sequential(
             nn.Linear(input_size, hidden_size),
