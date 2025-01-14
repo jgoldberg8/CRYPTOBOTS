@@ -116,15 +116,20 @@ class TimePeakDataset(Dataset):
                     features = self._extract_features_until_time(token_data, t)
                     
                     if fit:
-                        features = self.scalers['features'].fit_transform(features)
+                        features = self.scalers['features'].fit_transform(features).astype(np.float32)
                     else:
-                        features = self.scalers['features'].transform(features)
+                        features = self.scalers['features'].transform(features).astype(np.float32)
+                    
+                    # Ensure features have the correct shape
+                    if features.shape != (1, self.feature_size):
+                        print(f"Warning: Reshaping features from {features.shape} to (1, {self.feature_size})")
+                        features = features.reshape(1, self.feature_size)
                     
                     # Global token features (available from start)
                     global_features = np.array([[
                         token_data['initial_investment_ratio'],
                         token_data['initial_market_cap']
-                    ]])
+                    ]], dtype=np.float32)
                     
                     if fit:
                         global_features = self.scalers['global'].fit_transform(global_features)
@@ -135,12 +140,12 @@ class TimePeakDataset(Dataset):
                     is_peak = abs(t - time_to_peak) <= 5  # 5 second tolerance
                     
                     processed_data.append({
-                        'features': features,
-                        'global_features': global_features,
+                        'features': features,  # Should be shape (1, feature_size)
+                        'global_features': global_features,  # Shape (1, 2)
                         'is_peak': is_peak,
                         'timestamp': t,
                         'time_to_peak': time_to_peak,
-                        'mask': True  # All points after initial_window are valid
+                        'mask': True
                     })
                     
                 except Exception as e:
@@ -149,6 +154,11 @@ class TimePeakDataset(Dataset):
         
         if not processed_data:
             raise ValueError("No valid samples were generated during preprocessing")
+            
+        # Verify feature dimensions
+        for item in processed_data[:5]:  # Check first few items
+            if item['features'].shape != (1, self.feature_size):
+                raise ValueError(f"Feature shape mismatch in processed data: {item['features'].shape} vs expected (1, {self.feature_size})")
         
         return processed_data
     
@@ -270,13 +280,18 @@ class TimePeakDataset(Dataset):
     def __len__(self):
         return len(self.data)
     
-    def __getitem__(self, idx):
+     def __getitem__(self, idx):
         """Get a single training sample"""
         sample = self.data[idx]
         
+        # Ensure features maintain their shape
+        features = torch.FloatTensor(sample['features'])  # Should already be shape (1, feature_size)
+        if features.shape != (1, self.feature_size):
+            raise ValueError(f"Feature shape mismatch in __getitem__: {features.shape} vs expected (1, {self.feature_size})")
+        
         return {
-            'features': torch.FloatTensor(sample['features']),
-            'global_features': torch.FloatTensor(sample['global_features']),
+            'features': features.squeeze(0),  # Remove batch dimension for dataloader
+            'global_features': torch.FloatTensor(sample['global_features']).squeeze(0),
             'is_peak': torch.FloatTensor([sample['is_peak']]),
             'timestamp': torch.FloatTensor([sample['timestamp']]),
             'time_to_peak': torch.FloatTensor([sample['time_to_peak']]),
