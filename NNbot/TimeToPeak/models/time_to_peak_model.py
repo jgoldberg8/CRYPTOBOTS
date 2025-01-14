@@ -8,6 +8,7 @@ from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from TimeToPeak.datasets.time_token_dataset import TimePeakDataset
 from TimeToPeak.utils.time_loss import PeakPredictionLoss
