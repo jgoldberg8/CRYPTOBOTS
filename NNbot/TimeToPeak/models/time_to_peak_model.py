@@ -103,7 +103,7 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = PeakPredictionLoss()
-    scaler = GradScaler()  # Updated GradScaler
+    scaler = GradScaler()
     
     best_val_loss = float('inf')
     patience = 15
@@ -122,18 +122,20 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             # Move batch to device
             features = batch['features'].to(device)
             global_features = batch['global_features'].to(device)
-            is_peak = batch['is_peak'].to(device)  # Changed from timestamps to is_peak
+            timestamps = batch['timestamp'].to(device)
+            time_to_peak = batch['time_to_peak'].to(device)
             mask = batch['mask'].to(device)
             
             optimizer.zero_grad()
             
             # Forward pass with autocast
-            with autocast(device_type='cuda'):  # Updated autocast
+            with autocast(device_type='cuda'):
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
-                    peak_logits, 
-                    confidence_logits, 
-                    is_peak,  # Use is_peak instead of timestamps
+                    peak_logits,
+                    confidence_logits,
+                    timestamps,
+                    time_to_peak,
                     mask
                 )
             
@@ -154,14 +156,16 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             for batch in val_bar:
                 features = batch['features'].to(device)
                 global_features = batch['global_features'].to(device)
-                is_peak = batch['is_peak'].to(device)  # Changed from timestamps to is_peak
+                timestamps = batch['timestamp'].to(device)
+                time_to_peak = batch['time_to_peak'].to(device)
                 mask = batch['mask'].to(device)
                 
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
-                    peak_logits, 
-                    confidence_logits, 
-                    is_peak,  # Use is_peak instead of timestamps
+                    peak_logits,
+                    confidence_logits,
+                    timestamps,
+                    time_to_peak,
                     mask
                 )
                 
