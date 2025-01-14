@@ -46,8 +46,8 @@ class RealTimeEvaluator:
     def evaluate_token(self, token_df):
         """Evaluate a single token's data in simulated real-time"""
         dataset = MultiGranularTokenDataset(token_df, train=False, 
-                                          scaler=self.scaler,  # Pass the scaler
-                                          initial_window=self.initial_window)
+                                            scaler=self.scaler,  # Pass the scaler
+                                            initial_window=self.initial_window)
         
         mint = token_df['mint'].iloc[0]
         self.ground_truth[mint] = {
@@ -211,7 +211,7 @@ class RealTimeEvaluator:
 
 def main():
     # Load test data
-    test_df = pd.read_csv('data/test_data.csv')
+    test_df = pd.read_csv('data/time-data.csv')
     test_df = clean_dataset(test_df)
     
     # Initialize evaluator
