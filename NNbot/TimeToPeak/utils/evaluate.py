@@ -34,12 +34,30 @@ class RealTimeEvaluator:
         
     def prepare_features(self, features_dict, current_time):
         """Prepare features in format expected by model for a given timestamp"""
-        # Create dataset with single sample
-        dataset = MultiGranularTokenDataset(
-            pd.DataFrame([features_dict]), 
-            scaler=self.scaler,
-            train=False
-        )
+        # Remove 'mint' if it accidentally got into features_dict
+        features_dict = {k: v for k, v in features_dict.items() if k != 'mint'}
+        
+        # Create a DataFrame with the features
+        df = pd.DataFrame([features_dict])
+        
+        # Add global features if they're missing
+        global_feature_cols = ['initial_investment_ratio', 'initial_market_cap', 
+                            'peak_market_cap', 'time_to_peak']
+        for col in global_feature_cols:
+            if col not in df.columns:
+                print(f"Warning: Global feature {col} not found in features")
+        
+        # Attempt to create dataset
+        try:
+            dataset = MultiGranularTokenDataset(
+                df, 
+                scaler=self.scaler,
+                train=False
+            )
+        except Exception as e:
+            print(f"Dataset creation error: {e}")
+            print("Features collected:", list(features_dict.keys()))
+            raise
         
         # Get sample in tensor format
         sample = dataset[0]
@@ -53,29 +71,29 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
+        # Global features to include
+        global_features = {
+            'initial_investment_ratio': token_df['initial_investment_ratio'].iloc[0],
+            'initial_market_cap': token_df['initial_market_cap'].iloc[0],
+            'peak_market_cap': token_df['peak_market_cap'].iloc[0],
+            'time_to_peak': true_peak
+        }
+        
         # print(f"Debugging token: {mint}")
-        # print(f"Columns in token_df: {token_df.columns}")
+        # print(f"True peak time: {true_peak}")
         
         # Track state
         current_time = 0
         final_prediction = None
-        features_dict = {}
-        
-        # Print the first few rows of the token_df to understand its structure
-        # print("\nFirst few rows of token_df:")
-        # print(token_df.head())
+        features_dict = global_features.copy()
         
         # Identify time window columns dynamically
-        time_window_cols = [col for col in token_df.columns 
-                            if '0to' in col and col.split('_')[0] in [
-                                'transaction_count', 'buy_pressure', 'volume',
-                                'rsi', 'price_volatility', 'volume_volatility',
-                                'momentum', 'trade_amount_variance', 'transaction_rate',
-                                'trade_concentration', 'unique_wallets'
-                            ]]
-        
-        # print(f"Number of time window columns: {len(time_window_cols)}")
-        # print("Time window columns:", time_window_cols)
+        base_features = [
+            'transaction_count', 'buy_pressure', 'volume', 'rsi', 
+            'price_volatility', 'volume_volatility', 'momentum', 
+            'trade_amount_variance', 'transaction_rate', 
+            'trade_concentration', 'unique_wallets'
+        ]
         
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
@@ -86,28 +104,20 @@ class RealTimeEvaluator:
                 continue
             
             # Update available features
-            for col in time_window_cols:
-                feature_base, time_range = col.rsplit('_', 1)
-                if not time_range.startswith('0to'):
-                    continue
-                    
-                try:
-                    # Extract the end time from the column name
-                    window_end = int(time_range.replace('0to','').replace('s',''))
-                    
-                    # Only include features for elapsed time windows
-                    if window_end <= current_time:
+            for feature in base_features:
+                for col in token_df.columns:
+                    if f'{feature}_0to' in col and int(col.split('0to')[1].replace('s','')) <= current_time:
                         features_dict[col] = token_df[col].iloc[0]
-                except (ValueError, IndexError) as e:
-                    print(f"Error parsing column {col}: {str(e)}")
-                    continue
             
             # print(f"Number of features collected at time {current_time}: {len(features_dict)}")
+            # print("Collected feature columns:")
+            for col in features_dict.keys():
+                print(col)
             
             # Need minimum number of features before making prediction
-            # if len(features_dict) < 17 * 2:  # 4 granularities
-                # continue
-                
+            if len([col for col in features_dict.keys() if '0to' in col]) < 17 * 2:  # 4 granularities
+                continue
+            
             # Prepare features and make prediction
             try:
                 batch = self.prepare_features(features_dict, current_time)
@@ -124,10 +134,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    # print(f"Prediction details:")
-                    # print(f"Hazard score: {hazard_score}")
-                    # print(f"Confidence score: {confidence_score}")
-                    # print(f"Predicted time: {predicted_time}")
+                    print(f"Prediction details:")
+                    print(f"Hazard score: {hazard_score}")
+                    print(f"Confidence score: {confidence_score}")
+                    print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
