@@ -289,7 +289,7 @@ def main():
         
         # Load data
         print("Loading data...")
-        df = pd.read_csv('data/time-data.csv')
+        df = pd.read_csv('data/temp.csv')
         df = clean_dataset(df)
         
         # Split data (80-20)
