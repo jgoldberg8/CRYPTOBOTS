@@ -34,18 +34,20 @@ class RealTimeEvaluator:
         
     def prepare_features(self, features_dict, current_time):
         """Prepare features in format expected by model for a given timestamp"""
-        # Remove 'mint' if it accidentally got into features_dict
-        features_dict = {k: v for k, v in features_dict.items() if k != 'mint'}
+        print("\n--- Preparing Features ---")
+        print("Full features dictionary:")
+        for k, v in features_dict.items():
+            print(f"{k}: {v}")
         
         # Create a DataFrame with the features
-        df = pd.DataFrame([features_dict])
+        try:
+            df = pd.DataFrame([features_dict])
+        except Exception as e:
+            print(f"DataFrame creation error: {e}")
+            raise
         
-        # Add global features if they're missing
-        global_feature_cols = ['initial_investment_ratio', 'initial_market_cap', 
-                            'peak_market_cap', 'time_to_peak']
-        for col in global_feature_cols:
-            if col not in df.columns:
-                print(f"Warning: Global feature {col} not found in features")
+        print("\nDataFrame columns:")
+        print(df.columns)
         
         # Attempt to create dataset
         try:
@@ -56,7 +58,10 @@ class RealTimeEvaluator:
             )
         except Exception as e:
             print(f"Dataset creation error: {e}")
-            print("Features collected:", list(features_dict.keys()))
+            print("Type of error:", type(e))
+            # If possible, print the full traceback
+            import traceback
+            traceback.print_exc()
             raise
         
         # Get sample in tensor format
