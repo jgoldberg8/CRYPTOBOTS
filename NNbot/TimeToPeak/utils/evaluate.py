@@ -53,8 +53,8 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        print(f"Debugging token: {mint}")
-        print(f"Columns in token_df: {token_df.columns}")
+        # print(f"Debugging token: {mint}")
+        # print(f"Columns in token_df: {token_df.columns}")
         
         # Track state
         current_time = 0
@@ -62,8 +62,8 @@ class RealTimeEvaluator:
         features_dict = {}
         
         # Print the first few rows of the token_df to understand its structure
-        print("\nFirst few rows of token_df:")
-        print(token_df.head())
+        # print("\nFirst few rows of token_df:")
+        # print(token_df.head())
         
         # Identify time window columns dynamically
         time_window_cols = [col for col in token_df.columns 
