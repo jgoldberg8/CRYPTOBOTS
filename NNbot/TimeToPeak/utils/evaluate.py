@@ -186,13 +186,18 @@ def main():
         logger.info("Generating plots...")
         plot_peak_comparison(results, 'results/peak_comparison.png')
         
-        # Print summary
+        # Print summary with None value handling
         logger.info("\nEvaluation Results:")
         logger.info(f"Classification Report:\n{metrics['classification_report']}")
         logger.info("\nTiming Statistics:")
-        logger.info(f"Mean Error: {metrics['timing_stats']['mean_error']:.2f} seconds")
-        logger.info(f"Median Error: {metrics['timing_stats']['median_error']:.2f} seconds")
-        logger.info(f"Error Std Dev: {metrics['timing_stats']['std_error']:.2f} seconds")
+        
+        mean_error = metrics['timing_stats']['mean_error']
+        median_error = metrics['timing_stats']['median_error']
+        std_error = metrics['timing_stats']['std_error']
+        
+        logger.info(f"Mean Error: {mean_error:.2f} seconds" if mean_error is not None else "Mean Error: No valid predictions")
+        logger.info(f"Median Error: {median_error:.2f} seconds" if median_error is not None else "Median Error: No valid predictions")
+        logger.info(f"Error Std Dev: {std_error:.2f} seconds" if std_error is not None else "Error Std Dev: No valid predictions")
         
     except Exception as e:
         logger.error(f"Error during evaluation: {str(e)}", exc_info=True)
