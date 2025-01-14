@@ -151,10 +151,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    # print(f"Prediction details:")
-                    # print(f"Hazard score: {hazard_score}")
-                    # print(f"Confidence score: {confidence_score}")
-                    # print(f"Predicted time: {predicted_time}")
+                    print(f"Prediction details:")
+                    print(f"Hazard score: {hazard_score}")
+                    print(f"Confidence score: {confidence_score}")
+                    print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
