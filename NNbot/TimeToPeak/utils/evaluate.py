@@ -32,12 +32,15 @@ class RealTimeEvaluator:
         model.load_state_dict(self.checkpoint['model_state_dict'])
         return model
         
-    def prepare_features(self, features_dict, current_time):
+    def prepare_features(self, features_dict, current_time, mint):
         """Prepare features in format expected by model for a given timestamp"""
-        print("\n--- Preparing Features ---")
-        print("Full features dictionary:")
-        for k, v in features_dict.items():
-            print(f"{k}: {v}")
+        # Add mint back to the features
+        features_dict['mint'] = mint
+        
+        # print("\n--- Preparing Features ---")
+        # print("Full features dictionary:")
+        # for k, v in features_dict.items():
+        #     print(f"{k}: {v}")
         
         # Create a DataFrame with the features
         try:
@@ -46,8 +49,8 @@ class RealTimeEvaluator:
             print(f"DataFrame creation error: {e}")
             raise
         
-        print("\nDataFrame columns:")
-        print(df.columns)
+        # print("\nDataFrame columns:")
+        # print(df.columns)
         
         # Attempt to create dataset
         try:
@@ -76,6 +79,9 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
+        print(f"\n=== Evaluating Token: {mint} ===")
+        print(f"True peak time: {true_peak}")
+        
         # Global features to include
         global_features = {
             'initial_investment_ratio': token_df['initial_investment_ratio'].iloc[0],
@@ -84,21 +90,21 @@ class RealTimeEvaluator:
             'time_to_peak': true_peak
         }
         
-        # print(f"Debugging token: {mint}")
-        # print(f"True peak time: {true_peak}")
-        
         # Track state
         current_time = 0
         final_prediction = None
         features_dict = global_features.copy()
         
-        # Identify time window columns dynamically
+        # Base features to collect
         base_features = [
             'transaction_count', 'buy_pressure', 'volume', 'rsi', 
             'price_volatility', 'volume_volatility', 'momentum', 
             'trade_amount_variance', 'transaction_rate', 
             'trade_concentration', 'unique_wallets'
         ]
+        
+        # Granularity windows to consider
+        windows = ['5s', '10s', '20s', '30s']  # Add more if needed
         
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
@@ -110,25 +116,31 @@ class RealTimeEvaluator:
             
             # Update available features
             for feature in base_features:
-                for col in token_df.columns:
-                    if f'{feature}_0to' in col and int(col.split('0to')[1].replace('s','')) <= current_time:
-                        features_dict[col] = token_df[col].iloc[0]
+                for window in windows:
+                    col_name = f'{feature}_0to{window}'
+                    if col_name in token_df.columns:
+                        features_dict[col_name] = token_df[col_name].iloc[0]
             
-            # print(f"Number of features collected at time {current_time}: {len(features_dict)}")
-            # print("Collected feature columns:")
-            for col in features_dict.keys():
-                print(col)
+            print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
             
             # Need minimum number of features before making prediction
-            if len([col for col in features_dict.keys() if '0to' in col]) < 17 * 2:  # 4 granularities
+            time_window_features = [
+                col for col in features_dict.keys() 
+                if '0to' in col and any(window in col for window in windows)
+            ]
+            
+            if len(time_window_features) < 17 * 2:  # 4 granularities
+                print(f"Not enough time window features: {len(time_window_features)}")
                 continue
             
             # Prepare features and make prediction
             try:
-                batch = self.prepare_features(features_dict, current_time)
+                batch = self.prepare_features(features_dict, current_time, mint)
             except Exception as e:
                 print(f"Error preparing features for {mint} at time {current_time}: {str(e)}")
                 continue
+
+            # Rest of the method remains the same...
 
             with torch.no_grad():
                 try:
