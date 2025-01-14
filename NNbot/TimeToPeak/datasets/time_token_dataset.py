@@ -122,7 +122,7 @@ class MultiGranularTokenDataset(Dataset):
             # Sort by time sequence (time_to_peak descending means forward in time)
             
             token_data = token_data.sort_values('time_to_peak', ascending=False)
-            print(token_data)
+            print(token_data[0])
             mint = token_data['mint'].iloc[0]  # Get the mint from the first row
             
             # Add momentum features if they weren't added yet
