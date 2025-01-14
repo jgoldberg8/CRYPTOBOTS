@@ -144,9 +144,9 @@ class RealTimeEvaluator:
                 if '0to' in col
             ]
             
-            if len(time_window_features) < 17 * 2:  # 4 granularities
-                # print(f"Not enough time window features: {len(time_window_features)}")
-                continue
+            # if len(time_window_features) < 17 * 2:  # 4 granularities
+            #     # print(f"Not enough time window features: {len(time_window_features)}")
+            #     continue
             
             # Prepare features and make prediction
             try:
