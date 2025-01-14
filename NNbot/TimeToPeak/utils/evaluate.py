@@ -53,22 +53,26 @@ class RealTimeEvaluator:
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        print(f"Evaluating token: {mint}")
-        print(f"True peak time: {true_peak}")
+        print(f"Debugging token: {mint}")
+        print(f"Columns in token_df: {token_df.columns}")
         
         # Track state
         current_time = 0
         final_prediction = None
         features_dict = {}
         
-        # Get valid feature columns (excluding metadata columns)
+        # Print the first few rows of the token_df to understand its structure
+        print("\nFirst few rows of token_df:")
+        print(token_df.head())
+        
+        # Identify time window columns dynamically
         time_window_cols = [col for col in token_df.columns 
-                        if '_to' in col and col.split('_')[0] in [
-                            'transaction_count', 'buy_pressure', 'volume',
-                            'rsi', 'price_volatility', 'volume_volatility',
-                            'momentum', 'trade_amount_variance', 'transaction_rate',
-                            'trade_concentration', 'unique_wallets'
-                        ]]
+                            if '0to' in col and col.split('_')[0] in [
+                                'transaction_count', 'buy_pressure', 'volume',
+                                'rsi', 'price_volatility', 'volume_volatility',
+                                'momentum', 'trade_amount_variance', 'transaction_rate',
+                                'trade_concentration', 'unique_wallets'
+                            ]]
         
         print(f"Number of time window columns: {len(time_window_cols)}")
         print("Time window columns:", time_window_cols)
@@ -80,20 +84,22 @@ class RealTimeEvaluator:
             # Skip prediction during initial data collection
             if current_time <= self.initial_window:
                 continue
-                    
+            
             # Update available features
             for col in time_window_cols:
                 feature_base, time_range = col.rsplit('_', 1)
-                if not time_range.endswith('s'):
+                if not time_range.startswith('0to'):
                     continue
                     
                 try:
-                    start_time, end_time = map(int, time_range.replace('s','').split('to'))
+                    # Extract the end time from the column name
+                    window_end = int(time_range.replace('0to','').replace('s',''))
+                    
                     # Only include features for elapsed time windows
-                    if end_time <= current_time:
+                    if window_end <= current_time:
                         features_dict[col] = token_df[col].iloc[0]
-                except ValueError:
-                    print(f"Error parsing time range for column: {col}")
+                except (ValueError, IndexError) as e:
+                    print(f"Error parsing column {col}: {str(e)}")
                     continue
             
             print(f"Number of features collected at time {current_time}: {len(features_dict)}")
@@ -110,29 +116,32 @@ class RealTimeEvaluator:
                 continue
 
             with torch.no_grad():
-                hazard_prob, time_pred, confidence = self.model(batch)
-                
-                # Convert logits to probabilities
-                hazard_score = torch.sigmoid(hazard_prob).item()
-                confidence_score = torch.sigmoid(confidence).item()
-                predicted_time = time_pred.item()
-                
-                print(f"Prediction details:")
-                print(f"Hazard score: {hazard_score}")
-                print(f"Confidence score: {confidence_score}")
-                print(f"Predicted time: {predicted_time}")
-                
-                # Make final prediction if confident enough
-                if confidence_score > 0.8 or hazard_score > 0.7:
-                    final_prediction = {
-                        'mint': mint,
-                        'predicted_time': predicted_time,
-                        'true_time': true_peak,
-                        'confidence': confidence_score,
-                        'hazard_prob': hazard_score,
-                        'prediction_made_at': current_time
-                    }
-                    break
+                try:
+                    hazard_prob, time_pred, confidence = self.model(batch)
+                    
+                    # Convert logits to probabilities
+                    hazard_score = torch.sigmoid(hazard_prob).item()
+                    confidence_score = torch.sigmoid(confidence).item()
+                    predicted_time = time_pred.item()
+                    
+                    print(f"Prediction details:")
+                    print(f"Hazard score: {hazard_score}")
+                    print(f"Confidence score: {confidence_score}")
+                    print(f"Predicted time: {predicted_time}")
+                    
+                    # Make final prediction if confident enough
+                    if confidence_score > 0.8 or hazard_score > 0.7:
+                        final_prediction = {
+                            'mint': mint,
+                            'predicted_time': predicted_time,
+                            'true_time': true_peak,
+                            'confidence': confidence_score,
+                            'hazard_prob': hazard_score,
+                            'prediction_made_at': current_time
+                        }
+                        break
+                except Exception as e:
+                    print(f"Prediction error: {str(e)}")
         
         # Add results to tracking lists if final_prediction exists
         if final_prediction:
