@@ -4,7 +4,7 @@ from sklearn.preprocessing import RobustScaler
 import torch
 from torch.utils.data import Dataset
 
-class TokenPeakDataset(Dataset):
+class TimePeakDataset(Dataset):
     def __init__(self, df, scaler=None, train=True, initial_window=30):
         """
         Dataset for peak prediction using historical token data.
