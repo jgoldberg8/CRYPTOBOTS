@@ -161,58 +161,66 @@ class TimePeakDataset(Dataset):
         return np.array(features).reshape(1, -1)
     
     def _calculate_window_features(self, token_data, window, current_time):
-        """Calculate additional features for a time window using only past data"""
+        """
+        Calculate additional features for a time window using only past data
+        with proper error handling and edge cases.
+        """
         features = []
         
-        # Price acceleration (rate of change of price changes)
-        price_cols = [f"price_volatility_0to{w}s" for w in range(window, current_time, window)]
-        if len(price_cols) >= 2:
-            price_changes = [token_data[col] for col in price_cols if col in token_data]
-            price_acceleration = [price_changes[i] - price_changes[i-1] for i in range(1, len(price_changes))]
-            avg_acceleration = sum(price_acceleration) / len(price_acceleration) if price_acceleration else 0
-        else:
-            avg_acceleration = 0
-        features.append(avg_acceleration)
-        
-        # Volume concentration (how much volume in recent windows vs overall)
-        volume_cols = [f"volume_0to{w}s" for w in range(window, current_time, window)]
-        if volume_cols:
-            recent_volume = sum([token_data[col] for col in volume_cols[-3:] if col in token_data])  # Last 3 windows
-            total_volume = sum([token_data[col] for col in volume_cols if col in token_data])
-            volume_concentration = recent_volume / (total_volume + 1e-8)
-        else:
-            volume_concentration = 0
-        features.append(volume_concentration)
-        
-        # Buy pressure trend and acceleration
-        pressure_cols = [f"buy_pressure_0to{w}s" for w in range(window, current_time, window)]
-        if len(pressure_cols) >= 2:
-            pressures = [token_data[col] for col in pressure_cols if col in token_data]
-            pressure_changes = [pressures[i] - pressures[i-1] for i in range(1, len(pressures))]
-            pressure_acceleration = sum(pressure_changes) / len(pressure_changes)
-        else:
-            pressure_acceleration = 0
-        features.append(pressure_acceleration)
-        
-        # Wallet concentration (unique wallets vs transaction count)
-        tx_cols = [f"transaction_count_0to{w}s" for w in range(window, current_time, window)]
-        wallet_cols = [f"unique_wallets_0to{w}s" for w in range(window, current_time, window)]
-        if tx_cols and wallet_cols:
-            recent_tx = sum([token_data[col] for col in tx_cols[-3:] if col in token_data])
-            recent_wallets = sum([token_data[col] for col in wallet_cols[-3:] if col in token_data]) + 1
-            wallet_concentration = recent_tx / recent_wallets
-        else:
-            wallet_concentration = 0
-        features.append(wallet_concentration)
-        
-        # Momentum indicators
-        momentum_cols = [f"momentum_0to{w}s" for w in range(window, current_time, window)]
-        if momentum_cols:
-            recent_momentum = sum([token_data[col] for col in momentum_cols[-3:] if col in token_data]) / 3
-        else:
-            recent_momentum = 0
-        features.append(recent_momentum)
-        
+        try:
+            # Price acceleration
+            price_cols = [f"price_volatility_0to{w}s" for w in range(window, int(current_time), window)]
+            if len(price_cols) >= 2:
+                price_changes = [float(token_data.get(col, 0)) for col in price_cols]
+                price_acceleration = [price_changes[i] - price_changes[i-1] for i in range(1, len(price_changes))]
+                avg_acceleration = sum(price_acceleration) / len(price_acceleration) if price_acceleration else 0
+            else:
+                avg_acceleration = 0
+            features.append(float(avg_acceleration))
+            
+            # Volume concentration
+            volume_cols = [f"volume_0to{w}s" for w in range(window, int(current_time), window)]
+            if volume_cols:
+                recent_volume = sum([float(token_data.get(col, 0)) for col in volume_cols[-3:]])
+                total_volume = sum([float(token_data.get(col, 0)) for col in volume_cols])
+                volume_concentration = recent_volume / (total_volume + 1e-10)  # Avoid division by zero
+            else:
+                volume_concentration = 0
+            features.append(float(volume_concentration))
+            
+            # Buy pressure trend
+            pressure_cols = [f"buy_pressure_0to{w}s" for w in range(window, int(current_time), window)]
+            if len(pressure_cols) >= 2:
+                pressures = [float(token_data.get(col, 0)) for col in pressure_cols]
+                pressure_changes = [pressures[i] - pressures[i-1] for i in range(1, len(pressures))]
+                pressure_acceleration = sum(pressure_changes) / len(pressure_changes) if pressure_changes else 0
+            else:
+                pressure_acceleration = 0
+            features.append(float(pressure_acceleration))
+            
+            # Wallet concentration
+            tx_cols = [f"transaction_count_0to{w}s" for w in range(window, int(current_time), window)]
+            wallet_cols = [f"unique_wallets_0to{w}s" for w in range(window, int(current_time), window)]
+            if tx_cols and wallet_cols:
+                recent_tx = sum([float(token_data.get(col, 0)) for col in tx_cols[-3:]])
+                recent_wallets = sum([float(token_data.get(col, 0)) for col in wallet_cols[-3:]]) + 1e-10
+                wallet_concentration = recent_tx / recent_wallets
+            else:
+                wallet_concentration = 0
+            features.append(float(wallet_concentration))
+            
+            # Momentum indicators
+            momentum_cols = [f"momentum_0to{w}s" for w in range(window, int(current_time), window)]
+            if momentum_cols:
+                recent_momentum = sum([float(token_data.get(col, 0)) for col in momentum_cols[-3:]]) / 3
+            else:
+                recent_momentum = 0
+            features.append(float(recent_momentum))
+            
+        except Exception as e:
+            # If any calculation fails, return zeros with proper length
+            return [0.0] * 5
+            
         return features
     
     def __len__(self):
