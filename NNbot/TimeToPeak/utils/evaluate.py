@@ -120,6 +120,13 @@ class RealTimeEvaluator:
                     }
                     break
     
+    # Add results to tracking lists if final_prediction exists
+    if final_prediction:
+        self.predictions[mint] = final_prediction
+        self.true_values.append(final_prediction['true_time'])
+        self.predicted_values.append(final_prediction['predicted_time'])
+        self.prediction_times.append(final_prediction['prediction_made_at'])
+    
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset"""
         print(f"Evaluating {len(test_df)} tokens...")
@@ -131,6 +138,10 @@ class RealTimeEvaluator:
     
     def calculate_metrics(self):
         """Calculate evaluation metrics"""
+        if not self.true_values or not self.predicted_values:
+            print("No predictions made. Cannot calculate metrics.")
+            return None
+
         true_array = np.array(self.true_values)
         pred_array = np.array(self.predicted_values)
         time_array = np.array(self.prediction_times)
@@ -148,7 +159,12 @@ class RealTimeEvaluator:
         return metrics
     
     def plot_results(self):
-        """Create scatter plot of predicted vs true peak times"""
+        """Create scatter plot of predicted vs true peak times and save to file"""
+        # Ensure no plotting if no predictions
+        if not self.true_values or not self.predicted_values:
+            print("No predictions to plot.")
+            return
+        
         plt.figure(figsize=(10, 10))
         plt.scatter(self.true_values, self.predicted_values, alpha=0.5)
         
@@ -160,11 +176,24 @@ class RealTimeEvaluator:
         plt.xlabel('True Time to Peak (seconds)')
         plt.ylabel('Predicted Time to Peak (seconds)')
         plt.title('Time to Peak: Predicted vs True')
-        plt.text(0.05, 0.95, f'R² = {self.calculate_metrics()["r2"]:.4f}', 
+        
+        # Calculate R² and add to plot
+        r2 = self.calculate_metrics()['r2']
+        plt.text(0.05, 0.95, f'R² = {r2:.4f}', 
                 transform=plt.gca().transAxes)
         
         plt.tight_layout()
-        plt.show()
+        
+        # Create Visualizations directory in parent directory
+        visualizations_dir = Path(__file__).parent.parent / 'Visualizations'
+        visualizations_dir.mkdir(exist_ok=True)
+        
+        # Save plot
+        plot_path = visualizations_dir / 'time_to_peak_scatter.png'
+        plt.savefig(plot_path)
+        plt.close()  # Close the plot to free up memory
+        
+        print(f"Plot saved to {plot_path}")
 
 def main():
     # Load test data
@@ -181,17 +210,17 @@ def main():
     metrics = evaluator.evaluate_dataset(test_df)
     
     # Print metrics
-    print("\nEvaluation Metrics:")
-    print(f"Mean Absolute Error: {metrics['mae']:.2f} seconds")
-    print(f"RMSE: {metrics['rmse']:.2f} seconds")
-    print(f"R² Score: {metrics['r2']:.4f}")
-    print(f"Average Prediction Time: {metrics['avg_prediction_time']:.2f} seconds")
-    print(f"Early Predictions: {metrics['early_predictions']}")
-    print(f"Late Predictions: {metrics['late_predictions']}")
-    print(f"Total Predictions: {metrics['total_predictions']}")
-    
-    # Plot results
-    evaluator.plot_results()
-
-if __name__ == "__main__":
-    main()
+    if metrics:
+        print("\nEvaluation Metrics:")
+        print(f"Mean Absolute Error: {metrics['mae']:.2f} seconds")
+        print(f"RMSE: {metrics['rmse']:.2f} seconds")
+        print(f"R² Score: {metrics['r2']:.4f}")
+        print(f"Average Prediction Time: {metrics['avg_prediction_time']:.2f} seconds")
+        print(f"Early Predictions: {metrics['early_predictions']}")
+        print(f"Late Predictions: {metrics['late_predictions']}")
+        print(f"Total Predictions: {metrics['total_predictions']}")
+        
+        # Plot results
+        evaluator.plot_results()
+    else:
+        print("No metrics could be calculated.")
