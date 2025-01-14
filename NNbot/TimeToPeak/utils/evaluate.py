@@ -169,7 +169,6 @@ def main():
         model = PeakPredictor(
             feature_size=training_info['model_config']['feature_size'],
             hidden_size=training_info['model_config']['hidden_size'],
-            num_time_windows=training_info['model_config']['num_time_windows'],
             dropout_rate=training_info['model_config']['dropout_rate']
         )
         
