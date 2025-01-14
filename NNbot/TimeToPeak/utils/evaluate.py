@@ -119,7 +119,6 @@ class RealTimeEvaluator:
                 # Prepare batch for model
                 batch = {
                     'global_features': torch.FloatTensor(processed_sample['global_features']).view(-1, 4),
-                    'time_to_peak': torch.FloatTensor(processed_sample['target_info']['time_to_peak']).view(-1, 1),
                     'peak_proximity': torch.FloatTensor(processed_sample['target_info']['peak_proximity']).view(-1, 1),
                     'mask': torch.FloatTensor(processed_sample['target_info']['mask']).view(-1, 1),
                     'sample_weights': torch.FloatTensor(processed_sample['target_info']['sample_weights']).view(-1, 1)
