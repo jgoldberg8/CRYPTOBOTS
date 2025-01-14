@@ -70,72 +70,76 @@ class PeakPredictionLoss(nn.Module):
         Calculate loss for peak predictions.
 
         Args:
-            peak_logits: Model predictions for peaks (batch_size, 1)
-            confidence_logits: Model confidence in predictions (batch_size, 1)
-            timestamps: Current timestamp for each prediction (batch_size, 1)
-            true_peak_times: True peak times (batch_size, 1)
-            mask: Mask for valid predictions (batch_size, 1)
+            peak_logits: Model predictions for peaks (batch_size)
+            confidence_logits: Model confidence in predictions (batch_size)
+            timestamps: Current timestamp for each prediction (batch_size)
+            true_peak_times: True peak times (batch_size)
+            mask: Mask for valid predictions (batch_size)
         """
-        # Ensure all tensors are properly shaped and converted to float
-        peak_logits = peak_logits.float().squeeze()
-        confidence_logits = confidence_logits.float().squeeze()
-        timestamps = timestamps.float().squeeze()
-        true_peak_times = true_peak_times.float().squeeze()
-        
-        # Convert mask to boolean tensor
-        mask = mask.bool().squeeze()
+        # Print debug information
+        print("Debug: Input tensor types")
+        print(f"peak_logits type: {type(peak_logits)}, shape: {peak_logits.shape}")
+        print(f"confidence_logits type: {type(confidence_logits)}, shape: {confidence_logits.shape}")
+        print(f"timestamps type: {type(timestamps)}, shape: {timestamps.shape}")
+        print(f"true_peak_times type: {type(true_peak_times)}, shape: {true_peak_times.shape}")
+        print(f"mask type: {type(mask)}, shape: {mask.shape}")
 
-        # Debug prints
-        print("Debug: peak_logits shape", peak_logits.shape)
-        print("Debug: confidence_logits shape", confidence_logits.shape)
-        print("Debug: timestamps shape", timestamps.shape)
-        print("Debug: true_peak_times shape", true_peak_times.shape)
-        print("Debug: mask shape", mask.shape)
-        print("Debug: mask sum", mask.sum())
+        # Ensure all tensors are on the same device and float type
+        device = peak_logits.device
+        peak_logits = peak_logits.float()
+        confidence_logits = confidence_logits.float()
+        timestamps = timestamps.float()
+        true_peak_times = true_peak_times.float()
+        mask = mask.bool()
 
         # If no valid predictions, return zero loss
-        if mask.sum() == 0:
+        if not mask.any():
             print("Debug: No valid predictions, returning zero loss")
-            return peak_logits.sum() * 0.0
+            return torch.tensor(0.0, device=device, requires_grad=True)
 
-        # Calculate time differences for all valid predictions
-        time_diffs = timestamps[mask] - true_peak_times[mask]
+        # Safely handle indexing with mask
+        peak_logits_valid = peak_logits[mask]
+        confidence_logits_valid = confidence_logits[mask]
+        timestamps_valid = timestamps[mask]
+        true_peak_times_valid = true_peak_times[mask]
+
+        # Calculate time differences
+        time_diffs = timestamps_valid - true_peak_times_valid
 
         # Create soft peak labels using Gaussian function
         peak_labels = self.gaussian_peak_label(time_diffs)
-
-        # Get valid logits
-        peak_logits_valid = peak_logits[mask]
-        confidence_logits_valid = confidence_logits[mask]
 
         # Calculate focal loss with class balancing
         peak_loss = self.focal_bce_loss(
             peak_logits_valid,
             peak_labels,
-            torch.tensor(self.pos_weight).to(peak_logits.device)
+            torch.tensor(self.pos_weight, device=device)
         )
 
         # Add timing penalty (with safe handling)
         with torch.no_grad():
             predictions = torch.sigmoid(peak_logits_valid) > 0.5
 
-            # Safe handling of empty tensors
+            # Initialize timing weights
             timing_weights = torch.ones_like(peak_loss)
 
-            # Check if there are any early predictions
+            # Check and apply early prediction penalty
             early_mask = (time_diffs < 0) & predictions
             if early_mask.any():
-                timing_weights[early_mask] = self.early_penalty
+                early_indices = torch.where(early_mask)[0]
+                timing_weights[early_indices] = self.early_penalty
 
-            # Check if there are any late predictions
+            # Check and apply late prediction penalty
             late_mask = (time_diffs > 0) & predictions
             if late_mask.any():
-                timing_weights[late_mask] = self.late_penalty
+                late_indices = torch.where(late_mask)[0]
+                timing_weights[late_indices] = self.late_penalty
 
+        # Apply timing weights to peak loss
         peak_loss = peak_loss * timing_weights
 
-        # Calculate confidence loss with stronger weighting near peaks
-        confidence_target = peak_labels  # Use same Gaussian labels for confidence
+        # Calculate confidence loss
+        confidence_target = peak_labels
         confidence_loss = F.binary_cross_entropy_with_logits(
             confidence_logits_valid,
             confidence_target,
@@ -143,7 +147,7 @@ class PeakPredictionLoss(nn.Module):
         )
 
         # Weight confidence loss higher near peaks
-        confidence_weights = 1.0 + peak_labels  # Higher weights near peak
+        confidence_weights = 1.0 + peak_labels
         confidence_loss = (confidence_loss * confidence_weights).mean()
 
         # Combine losses
