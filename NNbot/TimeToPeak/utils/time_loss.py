@@ -39,16 +39,20 @@ class PeakPredictionLoss(nn.Module):
         time_diffs = timestamps[valid_pred] - true_peak_times[valid_pred]
         is_peak = (time_diffs.abs() <= 5.0).float()  # 5 second tolerance window
         
+        # Ensure shapes match
+        peak_logits_valid = peak_logits[valid_pred].squeeze(-1)
+        confidence_logits_valid = confidence_logits[valid_pred].squeeze(-1)
+        
         # Binary cross entropy for peak prediction
         peak_loss = F.binary_cross_entropy_with_logits(
-            peak_logits[valid_pred],
+            peak_logits_valid,
             is_peak,
             reduction='none'
         )
         
         # Add timing penalty
         with torch.no_grad():
-            predictions = torch.sigmoid(peak_logits[valid_pred]) > 0.5
+            predictions = torch.sigmoid(peak_logits_valid) > 0.5
             early_mask = (time_diffs < 0) & predictions
             late_mask = (time_diffs > 0) & predictions
             
@@ -60,7 +64,7 @@ class PeakPredictionLoss(nn.Module):
         
         # Calculate confidence targets
         with torch.no_grad():
-            peak_probs = torch.sigmoid(peak_logits[valid_pred])
+            peak_probs = torch.sigmoid(peak_logits_valid)
             prediction_error = torch.abs(peak_probs - is_peak)
             confidence_target = 1.0 - prediction_error
             
@@ -73,7 +77,7 @@ class PeakPredictionLoss(nn.Module):
         
         # Confidence loss
         confidence_loss = F.binary_cross_entropy_with_logits(
-            confidence_logits[valid_pred],
+            confidence_logits_valid,
             confidence_target,
             reduction='none'
         )
