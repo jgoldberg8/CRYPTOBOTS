@@ -280,7 +280,7 @@ class TimePeakDataset(Dataset):
     def __len__(self):
         return len(self.data)
     
-     def __getitem__(self, idx):
+    def __getitem__(self, idx):
         """Get a single training sample"""
         sample = self.data[idx]
         
