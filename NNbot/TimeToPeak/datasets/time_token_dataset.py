@@ -4,20 +4,23 @@ from sklearn.preprocessing import RobustScaler
 import torch
 from torch.utils.data import Dataset
 
-from utils.add_data_quality_features import add_data_quality_features
-
-class MultiGranularTokenDataset(Dataset):
+class TokenPeakDataset(Dataset):
     def __init__(self, df, scaler=None, train=True, initial_window=30):
         """
-        Dataset for token peak prediction with initial data collection period.
+        Dataset for peak prediction using historical token data.
+        Each token has complete data from 0-1020s, but predictions simulate
+        real-time conditions by only using data available up to each timestamp.
+        
+        Args:
+            df: DataFrame with complete token history (0-1020s)
+            scaler: Optional pre-fit scaler for validation data
+            train: Whether this is training data
+            initial_window: Initial data collection period (no predictions)
         """
-        df = df.copy()
+        self.df = df.copy()
         self.initial_window = initial_window
         
-        # Group the data by mint to process each token's timeline
-        self.token_groups = [group for _, group in df.groupby('mint')]
-        
-        # Base features per window
+        # Basic features that get updated each timestamp
         self.base_features = [
             'transaction_count',
             'buy_pressure',
@@ -32,225 +35,160 @@ class MultiGranularTokenDataset(Dataset):
             'unique_wallets'
         ]
         
-        # Define time granularities
-        self.granularities = ['5s', '10s', '20s', '30s']
+        # All available time windows for features
+        self.time_windows = [5, 10, 20, 30, 60]  # Short time windows for quick reactions
         
         # Initialize or load scalers
         if train:
             if scaler is None:
                 self.scalers = self._init_scalers()
-                self.data = self._preprocess_data(self.token_groups, fit=True)
+                self.data = self._preprocess_data(fit=True)
             else:
                 self.scalers = scaler
-                self.data = self._preprocess_data(self.token_groups, fit=False)
+                self.data = self._preprocess_data(fit=False)
         else:
             if scaler is None:
                 raise ValueError("Scaler must be provided for validation/test data")
             self.scalers = scaler
-            self.data = self._preprocess_data(self.token_groups, fit=False)
-    
-    def _add_momentum_features(self, df):
-        """Add momentum and market dynamics features"""
-        # Calculate for each granularity
-        for gran in self.granularities:
-            window = int(gran.replace('s', ''))
-            
-            # Prevent NaN calculations
-            for feature in ['price_volatility', 'volume', 'transaction_count', 'buy_pressure', 'unique_wallets']:
-                col_name = f'{feature}_0to{window}s'
-                
-                # Replace NaNs with 0 or forward/backward fill
-                if col_name in df.columns:
-                    df[col_name] = df[col_name].fillna(0)  # or .fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
-            try:
-                # Price dynamics with NaN handling
-                df[f'price_delta_{gran}'] = df.groupby('mint')[f'price_volatility_0to{window}s'].diff().fillna(0)
-                df[f'price_acceleration_{gran}'] = df[f'price_delta_{gran}'].diff().fillna(0)
-                
-                # Volume dynamics with NaN handling
-                df[f'volume_delta_{gran}'] = df.groupby('mint')[f'volume_0to{window}s'].diff().fillna(0)
-                df[f'volume_acceleration_{gran}'] = df[f'volume_delta_{gran}'].diff().fillna(0)
-                
-                # Trading intensity with NaN and zero handling
-                transaction_col = f'transaction_count_0to{window}s'
-                wallets_col = f'unique_wallets_0to{window}s'
-                
-                # Prevent division by zero or NaN
-                df[f'trade_intensity_{gran}'] = (
-                    df[transaction_col].fillna(0) / 
-                    (df[wallets_col].fillna(1) + 1)
-                ).fillna(0).rolling(window=min(5, len(df))).mean().fillna(0)
-                
-                # Buy pressure momentum
-                pressure_col = f'buy_pressure_0to{window}s'
-                df[f'buy_pressure_momentum_{gran}'] = df.groupby('mint')[pressure_col].diff().fillna(0)
-            
-            except KeyError as e:
-                print(f"Warning: Could not create features for {gran} due to missing columns: {e}")
-                # Create placeholder columns with zeros
-                df[f'price_delta_{gran}'] = 0
-                df[f'price_acceleration_{gran}'] = 0
-                df[f'volume_delta_{gran}'] = 0
-                df[f'volume_acceleration_{gran}'] = 0
-                df[f'trade_intensity_{gran}'] = 0
-                df[f'buy_pressure_momentum_{gran}'] = 0
-
-        # Add data quality features
-        # try:
-        #     df = add_data_quality_features(df)
-        # except Exception as e:
-        #     print(f"Warning: Could not add data quality features: {e}")
-        
-        return df
-
+            self.data = self._preprocess_data(fit=False)
     
     def _init_scalers(self):
-        """Initialize scalers for all feature types"""
+        """Initialize scalers for each feature type"""
         return {
-            'granular': {gran: RobustScaler(quantile_range=(5, 95)) 
-                        for gran in self.granularities},
-            'global': RobustScaler(quantile_range=(5, 95)),
-            'target': RobustScaler(quantile_range=(5, 95))
+            'features': RobustScaler(quantile_range=(5, 95)),
+            'global': RobustScaler(quantile_range=(5, 95))
         }
     
-    def _preprocess_data(self, token_groups, fit=False):
-        """Preprocess data and create sequences"""
+    def _preprocess_data(self, fit=False):
+        """
+        Preprocess each token's complete data into a format suitable for training.
+        Creates samples that simulate real-time prediction scenarios.
+        """
         processed_data = []
         
-        for token_data in token_groups:  # Iterate directly over token groups
-            # Sort by time sequence (time_to_peak descending means forward in time)
+        # Process each token
+        for _, token_data in self.df.iterrows():
+            time_to_peak = token_data['time_to_peak']
             
-            token_data = token_data.sort_values('time_to_peak', ascending=False)
-            print(token_data[0])
-            mint = token_data['mint'].iloc[0]  # Get the mint from the first row
+            # Create prediction points between initial_window and 1020s
+            timestamps = np.arange(self.initial_window, 1020, 5)  # Sample every 5 seconds
             
-            # Add momentum features if they weren't added yet
-            token_data = self._add_momentum_features(token_data)
-            
-            # Process features for each granularity
-            gran_features = {}
-            for gran in self.granularities:
-                features = self._extract_granularity_features(token_data, gran)
+            for t in timestamps:
+                # Get features available up to this timestamp
+                features = self._extract_features_until_time(token_data, t)
                 
                 if fit:
-                    gran_features[gran] = self.scalers['granular'][gran].fit_transform(features)
+                    features = self.scalers['features'].fit_transform(features)
                 else:
-                    gran_features[gran] = self.scalers['granular'][gran].transform(features)
-            
-            # Process global features
-            global_features = self._extract_global_features(token_data)
-            if fit:
-                global_features = self.scalers['global'].fit_transform(global_features)
-            else:
-                global_features = self.scalers['global'].transform(global_features)
-            
-            # Get target information
-            target_info = self._process_target_info(token_data)
-            
-            processed_data.append({
-                'features': gran_features,
-                'global_features': global_features,
-                'target_info': target_info,
-                'token': mint
-            })
+                    features = self.scalers['features'].transform(features)
+                
+                # Global token features (available from start)
+                global_features = np.array([[
+                    token_data['initial_investment_ratio'],
+                    token_data['initial_market_cap']
+                ]])
+                
+                if fit:
+                    global_features = self.scalers['global'].fit_transform(global_features)
+                else:
+                    global_features = self.scalers['global'].transform(global_features)
+                
+                # Label: 1 if this is the peak time (within a small window), 0 otherwise
+                # Add some tolerance around the peak time
+                is_peak = abs(t - time_to_peak) <= 5  # 5 second tolerance
+                
+                processed_data.append({
+                    'features': features,
+                    'global_features': global_features,
+                    'is_peak': is_peak,
+                    'timestamp': t,
+                    'time_to_peak': time_to_peak,  # Store for analysis
+                    'mask': True  # All points after initial_window are valid
+                })
+        
         return processed_data
     
-    def _extract_granularity_features(self, df, granularity):
-        """Extract features for specific time granularity"""
-        window = int(granularity.replace('s', ''))
+    def _extract_features_until_time(self, token_data, current_time):
+        """
+        Extract all features that would be available at the current timestamp.
+        Only uses data from time windows that have completed by current_time.
+        """
         features = []
         
-        # Base trading features with NaN handling
-        for feature in self.base_features:
-            col_name = f"{feature}_0to{window}s"
-            if col_name in df.columns:
-                features.append(df[col_name].fillna(0).values)
-            else:
-                features.append(np.zeros(len(df)))
+        # Extract features for each time window
+        for window in self.time_windows:
+            # Only include windows that have completed
+            if current_time >= window:
+                for feature in self.base_features:
+                    col_name = f"{feature}_0to{window}s"
+                    if col_name in token_data:
+                        features.append(token_data[col_name])
+                    else:
+                        features.append(0)
+                        
+                # Add calculated features using only past data
+                try:
+                    window_features = self._calculate_window_features(token_data, window, current_time)
+                    features.extend(window_features)
+                except Exception as e:
+                    print(f"Error calculating window features: {e}")
+                    features.extend([0] * 4)  # Placeholder for missing features
         
-        # Momentum features with NaN handling
-        momentum_features = [
-            f'price_delta_{granularity}',
-            f'price_acceleration_{granularity}',
-            f'volume_delta_{granularity}',
-            f'volume_acceleration_{granularity}',
-            f'trade_intensity_{granularity}',
-            f'buy_pressure_momentum_{granularity}'
-        ]
-        
-        for feature in momentum_features:
-            if feature in df.columns:
-                features.append(df[feature].fillna(0).values)
-            else:
-                features.append(np.zeros(len(df)))
-        
-        return np.column_stack(features)
-        
-    def _extract_global_features(self, df):
-        """Extract global token features"""
-        return np.column_stack([
-            df['initial_investment_ratio'].values,
-            df['initial_market_cap'].values,
-            df['peak_market_cap'].values,
-            df['time_to_peak'].values,
-        ])
+        return np.array(features).reshape(1, -1)
     
-    def _process_target_info(self, df):
-        """Process target variables and create prediction masks"""
-        time_to_peak = df['time_to_peak'].values
+    def _calculate_window_features(self, token_data, window, current_time):
+        """Calculate additional features for a time window using only past data"""
+        features = []
         
-        # Create prediction mask (True after initial window)
-        mask = (time_to_peak >= self.initial_window)
+        # Price momentum (using only past data)
+        price_cols = [f"price_volatility_0to{w}s" for w in range(window, current_time, window)]
+        if price_cols:
+            price_momentum = sum([token_data[col] for col in price_cols if col in token_data]) / len(price_cols)
+        else:
+            price_momentum = 0
+        features.append(price_momentum)
         
-        # Calculate peak proximity using exponential decay
-        # Shorter decay for earlier peaks to increase sensitivity
-        peak_proximity = np.exp(-time_to_peak / (max(20, time_to_peak.min() / 4)))
+        # Volume momentum
+        volume_cols = [f"volume_0to{w}s" for w in range(window, current_time, window)]
+        if volume_cols:
+            volume_momentum = sum([token_data[col] for col in volume_cols if col in token_data]) / len(volume_cols)
+        else:
+            volume_momentum = 0
+        features.append(volume_momentum)
         
-        # Calculate sample weights based on time distribution
-        time_buckets = pd.cut(time_to_peak, 
-                            bins=[30, 100, 200, 400, 600, 800, 1020],
-                            labels=['30-100', '100-200', '200-400', 
-                                '400-600', '600-800', '800-1020'])
-        counts = time_buckets.value_counts()
-        weights = 1 / (counts[time_buckets] + 1)  # Add 1 to avoid division by zero
-        sample_weights = weights / weights.sum()
+        # Trading intensity
+        tx_cols = [f"transaction_count_0to{w}s" for w in range(window, current_time, window)]
+        wallet_cols = [f"unique_wallets_0to{w}s" for w in range(window, current_time, window)]
+        if tx_cols and wallet_cols:
+            tx_sum = sum([token_data[col] for col in tx_cols if col in token_data])
+            wallet_sum = sum([token_data[col] for col in wallet_cols if col in token_data]) + 1
+            trade_intensity = tx_sum / wallet_sum
+        else:
+            trade_intensity = 0
+        features.append(trade_intensity)
         
-        # Add extra weight to early peaks (30-200s)
-        early_peak_mask = time_to_peak <= 200
-        sample_weights[early_peak_mask] *= 1.5
-        sample_weights = sample_weights / sample_weights.sum()
+        # Buy pressure trend
+        pressure_cols = [f"buy_pressure_0to{w}s" for w in range(window, current_time, window)]
+        if pressure_cols:
+            pressure_trend = sum([token_data[col] for col in pressure_cols if col in token_data]) / len(pressure_cols)
+        else:
+            pressure_trend = 0
+        features.append(pressure_trend)
         
-        # Print debug info
-        # print(f"Valid predictions in batch: {mask.sum()}/{len(mask)}")
-        # print(f"Time to peak range: [{time_to_peak.min()}, {time_to_peak.max()}]")
-        # print(f"Mask shape: {mask.shape}")
-        
-        return {
-            'time_to_peak': torch.tensor(time_to_peak, dtype=torch.float32).view(-1, 1),
-            'peak_proximity': torch.tensor(peak_proximity, dtype=torch.float32).view(-1, 1),
-            'mask': torch.tensor(mask.astype(float), dtype=torch.float32).view(-1, 1),
-            'sample_weights': torch.tensor(sample_weights, dtype=torch.float32).view(-1, 1)
-        }
-            
+        return features
+    
     def __len__(self):
         return len(self.data)
     
     def __getitem__(self, idx):
-        """Get a single token's data"""
-        token_data = self.data[idx]
+        """Get a single training sample"""
+        sample = self.data[idx]
         
-        # Ensure all tensors are properly reshaped
-        sample = {
-            'global_features': torch.FloatTensor(token_data['global_features']).view(-1, 4),
-            'time_to_peak': torch.FloatTensor(token_data['target_info']['time_to_peak']).view(-1, 1),
-            'peak_proximity': torch.FloatTensor(token_data['target_info']['peak_proximity']).view(-1, 1),
-            'mask': torch.FloatTensor(token_data['target_info']['mask']).view(-1, 1),
-            'sample_weights': torch.FloatTensor(token_data['target_info']['sample_weights']).view(-1, 1)
+        return {
+            'features': torch.FloatTensor(sample['features']),
+            'global_features': torch.FloatTensor(sample['global_features']),
+            'is_peak': torch.FloatTensor([sample['is_peak']]),
+            'timestamp': torch.FloatTensor([sample['timestamp']]),
+            'time_to_peak': torch.FloatTensor([sample['time_to_peak']]),
+            'mask': torch.FloatTensor([sample['mask']])
         }
-        
-        # Add features for each granularity with proper shape
-        for i, gran in enumerate(self.granularities):
-            sample[f'features_{i}'] = torch.FloatTensor(token_data['features'][gran]).view(-1, 17)  # 17 is input_size
-        
-        return sample

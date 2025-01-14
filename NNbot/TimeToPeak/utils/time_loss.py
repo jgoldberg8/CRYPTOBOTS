@@ -2,88 +2,88 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class PeakPredictionLoss(nn.Module):
-    def __init__(self, hazard_weight=1.0, time_weight=1.5, confidence_weight=0.5):
+    def __init__(self, early_prediction_penalty=1.5, late_prediction_penalty=1.0):
+        """
+        Loss function for peak prediction that penalizes:
+        1. False positives and false negatives (binary cross entropy)
+        2. Early predictions more heavily than late predictions (asymmetric timing penalty)
+        3. Low confidence in correct predictions
+        
+        Args:
+            early_prediction_penalty: Weight for penalizing predictions before the true peak
+            late_prediction_penalty: Weight for penalizing predictions after the true peak
+        """
         super().__init__()
-        self.hazard_weight = hazard_weight
-        self.time_weight = time_weight
-        self.confidence_weight = confidence_weight
+        self.early_penalty = early_prediction_penalty
+        self.late_penalty = late_prediction_penalty
     
-    def forward(self, hazard_pred, time_pred, confidence_pred, peak_proximity, time_to_peak, sample_weights, mask):
-        # Ensure all tensors have batch dimension first
-        batch_size = hazard_pred.size(0)
+    def forward(self, peak_logits, confidence_logits, timestamps, true_peak_times, mask):
+        """
+        Calculate loss for peak predictions.
         
-        # # Print shapes for debugging
-        # print("\nTensor shapes in loss calculation:")
-        # print(f"hazard_pred: {hazard_pred.shape}")
-        # print(f"time_pred: {time_pred.shape}")
-        # print(f"confidence_pred: {confidence_pred.shape}")
-        # print(f"peak_proximity: {peak_proximity.shape}")
-        # print(f"time_to_peak: {time_to_peak.shape}")
-        # print(f"sample_weights: {sample_weights.shape}")
-        # print(f"mask: {mask.shape}")
-        
-        # Reshape mask to match predictions if necessary
-        mask = mask.view(batch_size, -1)
+        Args:
+            peak_logits: Model predictions for peaks (batch_size, 1)
+            confidence_logits: Model confidence in predictions (batch_size, 1)
+            timestamps: Current timestamp for each prediction (batch_size, 1)
+            true_peak_times: True peak times (batch_size, 1)
+            mask: Mask for valid predictions (batch_size, 1)
+        """
+        # Only calculate loss for valid predictions
         valid_pred = mask.bool()
         
-        # Count valid predictions
-        num_valid = valid_pred.sum().item()
-        # print(f"Valid predictions: {num_valid}/{batch_size}")
+        if valid_pred.sum() == 0:
+            return peak_logits.sum() * 0.0
         
-        if num_valid == 0:
-            # Return zero loss (but maintain gradients)
-            return hazard_pred.sum() * 0.0
+        # Calculate peak labels based on timing
+        time_diffs = timestamps[valid_pred] - true_peak_times[valid_pred]
+        is_peak = (time_diffs.abs() <= 5.0).float()  # 5 second tolerance window
         
-        # Ensure all tensors have compatible shapes
-        hazard_pred = hazard_pred.view(batch_size, -1)
-        time_pred = time_pred.view(batch_size, -1)
-        confidence_pred = confidence_pred.view(batch_size, -1)
-        peak_proximity = peak_proximity.view(batch_size, -1)
-        time_to_peak = time_to_peak.view(batch_size, -1)
-        sample_weights = sample_weights.view(batch_size, -1)
-        
-        # Calculate losses only for valid predictions
-        # Use binary_cross_entropy_with_logits for hazard prediction
-        hazard_loss = F.binary_cross_entropy_with_logits(
-            hazard_pred[valid_pred],
-            peak_proximity[valid_pred],
+        # Binary cross entropy for peak prediction
+        peak_loss = F.binary_cross_entropy_with_logits(
+            peak_logits[valid_pred],
+            is_peak,
             reduction='none'
         )
-        hazard_loss = (hazard_loss * sample_weights[valid_pred]).mean()
         
-        # Time prediction loss
-        time_loss = F.smooth_l1_loss(
-            time_pred[valid_pred],
-            time_to_peak[valid_pred],
-            reduction='none'
-        )
-        time_loss = (time_loss * sample_weights[valid_pred]).mean()
+        # Add timing penalty
+        with torch.no_grad():
+            predictions = torch.sigmoid(peak_logits[valid_pred]) > 0.5
+            early_mask = (time_diffs < 0) & predictions
+            late_mask = (time_diffs > 0) & predictions
+            
+            timing_weights = torch.ones_like(peak_loss)
+            timing_weights[early_mask] = self.early_penalty
+            timing_weights[late_mask] = self.late_penalty
         
-        # Add relative error term
-        relative_error = torch.abs(time_pred[valid_pred] - time_to_peak[valid_pred]) / (time_to_peak[valid_pred] + 1e-8)
-        relative_loss = (relative_error * sample_weights[valid_pred]).mean()
-        time_loss = time_loss + 0.5 * relative_loss
+        peak_loss = peak_loss * timing_weights
         
-        # Confidence calibration using BCE with logits
-        confidence_target = torch.clamp(1 - relative_error.detach(), min=0.0, max=1.0)
+        # Calculate confidence targets
+        with torch.no_grad():
+            peak_probs = torch.sigmoid(peak_logits[valid_pred])
+            prediction_error = torch.abs(peak_probs - is_peak)
+            confidence_target = 1.0 - prediction_error
+            
+            # Higher confidence target for correct predictions around true peak
+            near_peak_mask = time_diffs.abs() <= 10.0  # Wider window for confidence
+            confidence_target[near_peak_mask] = torch.max(
+                confidence_target[near_peak_mask],
+                1.0 - (time_diffs[near_peak_mask].abs() / 10.0)  # Linear decay
+            )
+        
+        # Confidence loss
         confidence_loss = F.binary_cross_entropy_with_logits(
-            confidence_pred[valid_pred],
+            confidence_logits[valid_pred],
             confidence_target,
             reduction='none'
         )
-        confidence_loss = (confidence_loss * sample_weights[valid_pred]).mean()
         
-        # Combine losses with weights
-        total_loss = (
-            self.hazard_weight * hazard_loss +
-            self.time_weight * time_loss +
-            self.confidence_weight * confidence_loss
-        )
-        print(f"\nPrediction stats:")
-        print(f"Time prediction range: [{time_pred.min().item():.1f}, {time_pred.max().item():.1f}]")
-        print(f"True time range: [{time_to_peak.min().item():.1f}, {time_to_peak.max().item():.1f}]")
-        print(f"Confidence mean: {torch.sigmoid(confidence_pred).mean().item():.3f}")
+        # Weight confidence loss higher for predictions near peak
+        confidence_weights = torch.ones_like(confidence_loss)
+        confidence_weights[near_peak_mask] = 2.0
+        confidence_loss = confidence_loss * confidence_weights
+        
+        # Combine losses
+        total_loss = peak_loss.mean() + 0.5 * confidence_loss.mean()
         
         return total_loss

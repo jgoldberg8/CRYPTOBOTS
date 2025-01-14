@@ -1,73 +1,42 @@
-from ast import Lambda
-import warnings
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import autocast, GradScaler
-from torch.utils.data import DataLoader
 import numpy as np
-import pandas as pd
-import os
 from pathlib import Path
-import json
-import datetime
-import logging
-from tqdm import tqdm
 
-from TimeToPeak.datasets.time_token_dataset import MultiGranularTokenDataset
-from TimeToPeak.utils.clean_dataset import clean_dataset
 from TimeToPeak.utils.time_loss import PeakPredictionLoss
-from torch.optim.lr_scheduler import OneCycleLR
-warnings.filterwarnings('ignore')
+from TimeToPeak.utils.clean_dataset import clean_dataset
 
-class FeatureExtractor(nn.Module):
-    """Feature extraction module that processes multiple time granularities"""
-    def __init__(self, input_size, hidden_size=256, dropout_rate=0.3):
+class PeakPredictor(nn.Module):
+    def __init__(self, 
+                feature_size,  # Number of input features
+                hidden_size=256,
+                dropout_rate=0.4):
         super().__init__()
+        
+        # Feature processing network
         self.feature_net = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
+            nn.Linear(feature_size, hidden_size),
             nn.LayerNorm(hidden_size),
             nn.GELU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
+            nn.Dropout(dropout_rate)
         )
-    
-    def forward(self, x):
-        return self.feature_net(x)
-    
-class Lambda(nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-        
-    def forward(self, x):
-        return self.func(x)    
-
-class RealTimePeakPredictor(nn.Module):
-    def __init__(self, 
-                input_size=17,  # Base feature size
-                hidden_size=256,  # Increased for more capacity
-                num_granularities=4,  # 5s, 10s, 20s, 30s, 60s windows
-                dropout_rate=0.4):
-        super().__init__()
-        
-        # Feature extractors for each granularity
-        self.granularity_extractors = nn.ModuleDict({
-            f"{i}": FeatureExtractor(input_size, hidden_size, dropout_rate)
-            for i in range(num_granularities)
-        })
         
         # Global feature processor
         self.global_processor = nn.Sequential(
-            nn.Linear(4, hidden_size // 2),  # Process global features
+            nn.Linear(2, hidden_size // 2),  # Process initial investment ratio and market cap
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate)
         )
         
-        # Attention for combining features across granularities
+        # Combine features across time windows using attention
         self.attention = nn.MultiheadAttention(
             embed_dim=hidden_size // 2,
             num_heads=4,
@@ -75,232 +44,170 @@ class RealTimePeakPredictor(nn.Module):
             batch_first=True
         )
         
-        attention_output_size = (hidden_size // 2) * (num_granularities + 1)  # +1 for global features
+        attention_output_size = hidden_size // 2
         
-        self.hazard_predictor = nn.Sequential(
+        # Peak prediction head
+        self.peak_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 2, 1)  # Remove sigmoid
+            nn.Linear(hidden_size // 2, 1)  # Binary classification (peak or not)
         )
-
-
         
-        self.time_predictor = nn.Sequential(
-            nn.Linear(attention_output_size, hidden_size // 2),
-            nn.LayerNorm(hidden_size // 2),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 2, 1),
-            nn.Softplus(),
-            # Add scaling layer to map from [0,3] to [30,1020] range
-            Lambda(lambda x: x * 500 + 30)  # Scale and shift the output
-        )
-                
-        # Update the confidence predictor in __init__
+        # Confidence predictor
         self.confidence_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 4),
             nn.LayerNorm(hidden_size // 4),
             nn.GELU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 4, 1)  # Remove sigmoid
+            nn.Linear(hidden_size // 4, 1)
         )
     
-    def forward(self, batch):
-        # Process each granularity
-        granularity_features = []
-        
-        for i in range(len(self.granularity_extractors)):
-            features = batch[f'features_{i}']
-            extracted = self.granularity_extractors[str(i)](features)
-            granularity_features.append(extracted)
+    def forward(self, features, global_features):
+        # Process features
+        processed_features = self.feature_net(features)
         
         # Process global features
-        global_features = self.global_processor(batch['global_features'])
+        processed_global = self.global_processor(global_features)
         
         # Combine all features
-        all_features = torch.cat([global_features] + granularity_features, dim=1)
-        batch_size = all_features.size(0)
-        seq_len = len(self.granularity_extractors) + 1
+        combined = torch.cat([processed_features, processed_global], dim=1)
         
-        # Reshape for attention
-        features_reshaped = all_features.view(batch_size, seq_len, -1)
-        
-        # Apply attention
+        # Apply self-attention
         attended_features, _ = self.attention(
-            features_reshaped, 
-            features_reshaped, 
-            features_reshaped
+            combined.unsqueeze(1),  # Add sequence dimension
+            combined.unsqueeze(1),
+            combined.unsqueeze(1)
         )
         
-        # Flatten attended features
-        flat_features = attended_features.reshape(batch_size, -1)
+        # Remove sequence dimension
+        attended_features = attended_features.squeeze(1)
         
-        # Get predictions (without sigmoid for hazard and confidence)
-        hazard_logits = self.hazard_predictor(flat_features)
-        time_to_peak = self.time_predictor(flat_features)  # Keep Softplus here
-        confidence_logits = self.confidence_predictor(flat_features)
+        # Get predictions
+        peak_logits = self.peak_predictor(attended_features)
+        confidence_logits = self.confidence_predictor(attended_features)
         
-        return hazard_logits, time_to_peak, confidence_logits
+        return peak_logits, confidence_logits
 
-
-
-def find_optimal_batch_size(train_dataset, start_size=32, max_size=512):
-    """Find optimal batch size based on GPU memory"""
-    if not torch.cuda.is_available():
-        return start_size
+class PeakDetectionLoss(nn.Module):
+    def __init__(self, peak_weight=1.0, confidence_weight=0.5):
+        super().__init__()
+        self.peak_weight = peak_weight
+        self.confidence_weight = confidence_weight
+    
+    def forward(self, peak_logits, confidence_logits, is_peak, mask):
+        # Only calculate loss for valid predictions
+        valid_pred = mask.bool()
         
-    device = torch.device('cuda')
-    torch.cuda.empty_cache()
-    
-    current_size = start_size
-    while current_size <= max_size:
-        try:
-            loader = DataLoader(
-                train_dataset,
-                batch_size=current_size,
-                shuffle=True,
-                pin_memory=True
-            )
-            batch = next(iter(loader))
-            batch = {k: v.to(device) for k, v in batch.items()}
-            current_size *= 2
-            del batch
-            del loader
-            torch.cuda.empty_cache()
-        except RuntimeError as e:
-            if "out of memory" in str(e):
-                return current_size // 2
-            raise e
-    
-    return max_size
-
-def create_data_loaders(train_df, val_df, batch_size=None, num_workers=4):
-    """Create train and validation data loaders"""
-    # Create datasets
-    train_dataset = MultiGranularTokenDataset(train_df, train=True)
-    val_dataset = MultiGranularTokenDataset(
-        val_df,
-        scaler=train_dataset.scalers,
-        train=False
-    )
-    
-    # Find optimal batch size if not provided
-    if batch_size is None:
+        if valid_pred.sum() == 0:
+            return peak_logits.sum() * 0.0
         
+        # Peak prediction loss (binary cross entropy)
+        peak_loss = F.binary_cross_entropy_with_logits(
+            peak_logits[valid_pred],
+            is_peak[valid_pred],
+            reduction='mean'
+        )
         
-        batch_size = find_optimal_batch_size(train_dataset)
-        print(f"Using batch size: {batch_size}")
-    
-    # Create data loaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=num_workers
-    )
-    
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        pin_memory=True,
-        num_workers=num_workers
-    )
-    
-    return train_loader, val_loader
+        # Calculate confidence loss
+        # Confidence should be high when prediction is correct, low when wrong
+        with torch.no_grad():
+            peak_probs = torch.sigmoid(peak_logits[valid_pred])
+            prediction_error = torch.abs(peak_probs - is_peak[valid_pred])
+            confidence_target = 1.0 - prediction_error
+        
+        confidence_loss = F.binary_cross_entropy_with_logits(
+            confidence_logits[valid_pred],
+            confidence_target,
+            reduction='mean'
+        )
+        
+        # Combine losses
+        total_loss = (
+            self.peak_weight * peak_loss +
+            self.confidence_weight * confidence_loss
+        )
+        
+        return total_loss
 
-def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=15):
-    """Train the model with early stopping"""
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='cuda'):
+    """Train the peak prediction model"""
     model = model.to(device)
-    
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr,
-        weight_decay=0.01
-    )
-    
-    scheduler = OneCycleLR(
-        optimizer,
-        max_lr=lr,
-        epochs=epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.3
-    )
-    
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = PeakPredictionLoss()
-    
-    # Initialize GradScaler
-    scaler = GradScaler()
+    scaler = torch.cuda.amp.GradScaler()
     
     best_val_loss = float('inf')
+    patience = 15
     patience_counter = 0
-    best_epoch = 0
     
-    # Training loop
+    save_dir = Path("checkpoints")
+    save_dir.mkdir(exist_ok=True)
+    
     for epoch in range(epochs):
+        # Training
         model.train()
         train_losses = []
         
-        # Training phase
-        train_pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs} [Train]')
-        for batch in train_pbar:
+        train_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs} [Train]')
+        for batch in train_bar:
             # Move batch to device
-            batch = {k: v.to(device) for k, v in batch.items()}
+            features = batch['features'].to(device)
+            global_features = batch['global_features'].to(device)
+            timestamps = batch['timestamp'].to(device)
+            time_to_peak = batch['time_to_peak'].to(device)
+            mask = batch['mask'].to(device)
             
-            # Zero gradients
             optimizer.zero_grad()
             
             # Forward pass with autocast
             with torch.cuda.amp.autocast():
-                hazard_prob, time_pred, confidence = model(batch)
+                peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
-                    hazard_prob,
-                    time_pred,
-                    confidence,
-                    batch['peak_proximity'],
-                    batch['time_to_peak'],
-                    batch['sample_weights'],
-                    batch['mask']
+                    peak_logits, 
+                    confidence_logits, 
+                    timestamps, 
+                    time_to_peak, 
+                    mask
                 )
             
-            # Backward pass
-            loss.backward()
-            
-            # Optimize
-            optimizer.step()
-            scheduler.step()
+            # Backward pass with gradient scaling
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             
             train_losses.append(loss.item())
-            train_pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+            train_bar.set_postfix({'loss': f"{loss.item():.4f}"})
         
-        # Validation phase
+        # Validation
         model.eval()
         val_losses = []
         
-        val_pbar = tqdm(val_loader, desc=f'Epoch {epoch+1}/{epochs} [Val]')
+        val_bar = tqdm(val_loader, desc=f'Epoch {epoch+1}/{epochs} [Val]')
         with torch.no_grad():
-            for batch in val_pbar:
-                batch = {k: v.to(device) for k, v in batch.items()}
-                hazard_prob, time_pred, confidence = model(batch)
+            for batch in val_bar:
+                features = batch['features'].to(device)
+                global_features = batch['global_features'].to(device)
+                timestamps = batch['timestamp'].to(device)
+                time_to_peak = batch['time_to_peak'].to(device)
+                mask = batch['mask'].to(device)
+                
+                peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
-                    hazard_prob,
-                    time_pred,
-                    confidence,
-                    batch['peak_proximity'],
-                    batch['time_to_peak'],
-                    batch['sample_weights'],
-                    batch['mask']
+                    peak_logits, 
+                    confidence_logits, 
+                    timestamps, 
+                    time_to_peak, 
+                    mask
                 )
+                
                 val_losses.append(loss.item())
-                val_pbar.set_postfix({'loss': f"{loss.item():.4f}"})
+                val_bar.set_postfix({'loss': f"{loss.item():.4f}"})
         
-        # Calculate average losses
-        train_loss = np.mean(train_losses)
-        val_loss = np.mean(val_losses)
+        # Calculate epoch metrics
+        train_loss = sum(train_losses) / len(train_losses)
+        val_loss = sum(val_losses) / len(val_losses)
         
         print(f'\nEpoch {epoch+1}/{epochs}:')
         print(f'Train Loss: {train_loss:.4f}')
@@ -309,26 +216,19 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
         # Early stopping check
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_epoch = epoch
             patience_counter = 0
             
             # Save best model
-            save_dir = Path("checkpoints")
-            save_dir.mkdir(exist_ok=True)
-            
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'val_loss': val_loss,
-                'train_loss': train_loss,
-                'scaler': train_loader.dataset.scalers  # Add this line
+                'val_loss': val_loss
             }, save_dir / 'best_model.pt')
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(f'\nEarly stopping triggered. Best epoch: {best_epoch+1} with loss: {best_val_loss:.4f}')
+                print(f'\nEarly stopping triggered after {epoch+1} epochs')
                 break
     
     # Load best model
@@ -337,86 +237,131 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, patience=
     
     return model, best_val_loss
 
-def main():
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    logger = logging.getLogger(__name__)
+def predict_peak(model, features, global_features, device='cuda'):
+    """
+    Make a peak prediction for a single token at a specific timestamp.
     
+    Args:
+        model: Trained PeakPredictor model
+        features: Current features tensor
+        global_features: Global token features tensor
+        device: Device to run prediction on
+    
+    Returns:
+        peak_prob: Probability that this is a peak
+        confidence: Model's confidence in the prediction
+    """
+    model.eval()
+    
+    with torch.no_grad():
+        features = features.to(device)
+        global_features = global_features.to(device)
+        
+        peak_logits, confidence_logits = model(features, global_features)
+        
+        peak_prob = torch.sigmoid(peak_logits)
+        confidence = torch.sigmoid(confidence_logits)
+        
+        return peak_prob.item(), confidence.item()
+    
+
+
+def main():
     try:
-        # Load and clean data
-        logger.info("Loading and cleaning data...")
-        df = pd.read_csv('data/time-data.csv')
+        # Create directories
+        Path("checkpoints").mkdir(exist_ok=True)
+        Path("results").mkdir(exist_ok=True)
+        
+        # Load data
+        print("Loading data...")
+        df = pd.read_csv('time-data.csv')
         df = clean_dataset(df)
         
-        # Split data (80-20 split)
-        logger.info("Splitting data...")
+        # Split data (80-20)
         train_size = int(0.8 * len(df))
         train_df = df[:train_size]
         val_df = df[train_size:]
         
+        print(f"Train size: {len(train_df)}, Validation size: {len(val_df)}")
+        
+        # Create datasets
+        print("Creating datasets...")
+        train_dataset = TokenPeakDataset(train_df, train=True)
+        val_dataset = TokenPeakDataset(
+            val_df,
+            scaler=train_dataset.scalers,
+            train=False
+        )
+        
         # Create data loaders
-        logger.info("Creating data loaders...")
-        train_loader, val_loader = create_data_loaders(train_df, val_df)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=32,
+            shuffle=True,
+            num_workers=4,
+            pin_memory=True
+        )
+        
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=32,
+            shuffle=False,
+            num_workers=4,
+            pin_memory=True
+        )
+        
+        # Calculate feature size
+        sample = next(iter(train_loader))
+        feature_size = sample['features'].shape[1]
         
         # Initialize model
-        logger.info("Initializing model...")
-        model = RealTimePeakPredictor(
-            input_size=17,
+        print("Initializing model...")
+        model = PeakPredictor(
+            feature_size=feature_size,
             hidden_size=256,
-            num_granularities=4,
             dropout_rate=0.4
         )
         
         # Train model
-        logger.info("Starting training...")
+        print("Starting training...")
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model, best_val_loss = train_model(
             model,
             train_loader,
             val_loader,
             epochs=100,
             lr=0.001,
-            patience=15
+            device=device
         )
         
         # Save training info
         training_info = {
-            'best_val_loss': float(best_val_loss),
+            'val_loss': float(best_val_loss),
             'model_config': {
-                'input_size': 17,
+                'feature_size': feature_size,
                 'hidden_size': 256,
-                'num_granularities': 4,
                 'dropout_rate': 0.4
             },
             'training_config': {
                 'epochs': 100,
                 'learning_rate': 0.001,
-                'patience': 15,
                 'train_size': len(train_df),
                 'val_size': len(val_df)
             },
-            'timestamp': datetime.datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat()
         }
         
-        # Save training info
-        save_dir = Path("checkpoints")
-        with open(save_dir / 'training_info.json', 'w') as f:
+        with open('checkpoints/training_info.json', 'w') as f:
             json.dump(training_info, f, indent=4)
         
-        logger.info(f"Training completed. Best validation loss: {best_val_loss:.4f}")
-        logger.info(f"Model and training info saved to {save_dir}")
+        # Save scalers
+        torch.save(train_dataset.scalers, 'checkpoints/scalers.pt')
         
-        return {
-            'model': model,
-            'best_val_loss': best_val_loss,
-            'train_loader': train_loader,
-            'val_loader': val_loader
-        }
+        print(f"Training completed. Best validation loss: {best_val_loss:.4f}")
+        print("Model, scalers, and training info saved in checkpoints directory")
         
     except Exception as e:
-        logger.error(f"Error during training: {str(e)}", exc_info=True)
+        print(f"Error during training: {str(e)}")
         raise
 
 if __name__ == "__main__":
