@@ -182,7 +182,6 @@ class TimePeakDataset(Dataset):
             print("window" + str(window) + "\n\n\n\n")
             for feature in self.base_features:
                 col_name = f"{feature}_0to{window}s"
-                print("\n\n\n")
                 print(col_name)
                 if current_time >= window and col_name in token_data:
                     window_features.append(float(token_data.get(col_name, 0)))
