@@ -9,8 +9,8 @@ import logging
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix, classification_report
 
-from peak_dataset import TokenPeakDataset
-from peak_model import PeakPredictor, predict_peak
+from TimeToPeak.datasets.time_token_dataset import TimePeakDataset
+from TimeToPeak.models.time_to_peak_model import PeakPredictor, predict_peak
 
 def evaluate_model(model, dataset, device='cuda'):
     """Evaluate model performance and collect predictions"""
@@ -166,7 +166,7 @@ def main():
         scalers = torch.load('checkpoints/scalers.pt')
         
         # Create dataset
-        test_dataset = TokenPeakDataset(test_df, scaler=scalers, train=False)
+        test_dataset = TimePeakDataset(test_df, scaler=scalers, train=False)
         
         # Evaluate model
         logger.info("Evaluating model...")
