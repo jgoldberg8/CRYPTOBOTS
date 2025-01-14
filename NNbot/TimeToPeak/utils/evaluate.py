@@ -58,27 +58,48 @@ class RealTimeEvaluator:
         final_prediction = None
         features_dict = {}
         
+        # Get valid feature columns (excluding metadata columns)
+        time_window_cols = [col for col in token_df.columns 
+                        if '_to' in col and col.split('_')[0] in [
+                            'transaction_count', 'buy_pressure', 'volume',
+                            'rsi', 'price_volatility', 'volume_volatility',
+                            'momentum', 'trade_amount_variance', 'transaction_rate',
+                            'trade_concentration', 'unique_wallets'
+                        ]]
+        
         # Simulate time progression in 5-second intervals
-        while current_time <= 1020:  # Add buffer after true peak
+        while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
             current_time += 5
             
             # Skip prediction during initial data collection
             if current_time <= self.initial_window:
                 continue
-                
-            # Update available features
-            for col in token_df.columns:
-                if '_to' in col:
-                    feature_base, time_range = col.split('_', 1)
-                    start_time, end_time = map(int, time_range.replace('s','').split('to'))
                     
+            # Update available features
+            for col in time_window_cols:
+                feature_base, time_range = col.rsplit('_', 1)
+                if not time_range.endswith('s'):
+                    continue
+                    
+                try:
+                    start_time, end_time = map(int, time_range.replace('s','').split('to'))
                     # Only include features for elapsed time windows
                     if end_time <= current_time:
                         features_dict[col] = token_df[col].iloc[0]
+                except ValueError:
+                    continue
             
+            # Need minimum number of features before making prediction
+            if len(features_dict) < len(self.base_features) * 4:  # 4 granularities
+                continue
+                
             # Prepare features and make prediction
-            batch = self.prepare_features(features_dict, current_time)
-            
+            try:
+                batch = self.prepare_features(features_dict, current_time)
+            except Exception as e:
+                print(f"Error preparing features for {mint} at time {current_time}: {str(e)}")
+                continue
+
             with torch.no_grad():
                 hazard_prob, time_pred, confidence = self.model(batch)
                 
@@ -98,23 +119,6 @@ class RealTimeEvaluator:
                         'prediction_made_at': current_time
                     }
                     break
-        
-        # If never reached confidence threshold, use last prediction
-        if final_prediction is None and current_time > self.initial_window:
-            final_prediction = {
-                'mint': mint,
-                'predicted_time': predicted_time,
-                'true_time': true_peak,
-                'confidence': confidence_score,
-                'hazard_prob': hazard_score,
-                'prediction_made_at': current_time
-            }
-        
-        if final_prediction:
-            self.predictions[mint] = final_prediction
-            self.true_values.append(true_peak)
-            self.predicted_values.append(final_prediction['predicted_time'])
-            self.prediction_times.append(final_prediction['prediction_made_at'])
     
     def evaluate_dataset(self, test_df):
         """Evaluate entire test dataset"""
