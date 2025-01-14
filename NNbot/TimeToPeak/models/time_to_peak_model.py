@@ -145,7 +145,13 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
     """Train the peak prediction model"""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
-    criterion = PeakPredictionLoss()
+    criterion = PeakPredictionLoss(
+    early_prediction_penalty=1.5,  # default value, can be adjusted
+    late_prediction_penalty=1.0,   # default value, can be adjusted
+    pos_weight=10.0,                # new parameter for focal loss
+    focal_gamma=2.0,                # new parameter for focal loss
+    gaussian_sigma=10.0             # new parameter for Gaussian peak labeling
+)
     scaler = GradScaler()
     
     best_val_loss = float('inf')
@@ -175,12 +181,12 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.001, device='c
             with autocast(device_type='cuda'):
                 peak_logits, confidence_logits = model(features, global_features)
                 loss = criterion(
-                    peak_logits,
-                    confidence_logits,
-                    timestamps,
-                    time_to_peak,
-                    mask
-                )
+                peak_logits,
+                confidence_logits,
+                timestamps,
+                time_to_peak,
+                mask
+            )
             
             # Backward pass with gradient scaling
             scaler.scale(loss).backward()
