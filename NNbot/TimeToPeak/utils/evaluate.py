@@ -74,8 +74,8 @@ class RealTimeEvaluator:
                                 'trade_concentration', 'unique_wallets'
                             ]]
         
-        print(f"Number of time window columns: {len(time_window_cols)}")
-        print("Time window columns:", time_window_cols)
+        # print(f"Number of time window columns: {len(time_window_cols)}")
+        # print("Time window columns:", time_window_cols)
         
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
@@ -102,7 +102,7 @@ class RealTimeEvaluator:
                     print(f"Error parsing column {col}: {str(e)}")
                     continue
             
-            print(f"Number of features collected at time {current_time}: {len(features_dict)}")
+            # print(f"Number of features collected at time {current_time}: {len(features_dict)}")
             
             # Need minimum number of features before making prediction
             if len(features_dict) < 17 * 2:  # 4 granularities
@@ -124,10 +124,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    print(f"Prediction details:")
-                    print(f"Hazard score: {hazard_score}")
-                    print(f"Confidence score: {confidence_score}")
-                    print(f"Predicted time: {predicted_time}")
+                    # print(f"Prediction details:")
+                    # print(f"Hazard score: {hazard_score}")
+                    # print(f"Confidence score: {confidence_score}")
+                    # print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
