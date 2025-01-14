@@ -36,7 +36,7 @@ class TimePeakDataset(Dataset):
         ]
         
         # All available time windows for features
-        self.time_windows = [5, 10, 20, 30]  # Short time windows for quick reactions
+        self.time_windows = [5, 10, 20, 30, 60]  # Short time windows for quick reactions
         
         # Initialize or load scalers
         if train:
@@ -156,7 +156,7 @@ class TimePeakDataset(Dataset):
                     features.extend(window_features)
                 except Exception as e:
                     print(f"Error calculating window features: {e}")
-                    features.extend([0] * 4)  # Placeholder for missing features
+                    features.extend([0] * 5)  # Placeholder for missing features
         
         return np.array(features).reshape(1, -1)
     
