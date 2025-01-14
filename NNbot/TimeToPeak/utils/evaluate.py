@@ -157,7 +157,7 @@ def main():
         
         # Load data
         logger.info("Loading test data...")
-        df = pd.read_csv('time-data.csv')
+        df = pd.read_csv('data/time-data.csv')
         train_size = int(0.8 * len(df))
         test_df = df[train_size:]  # Use validation set for evaluation
         
