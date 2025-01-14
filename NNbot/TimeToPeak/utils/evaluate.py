@@ -37,10 +37,10 @@ class RealTimeEvaluator:
         # Add mint back to the features
         features_dict['mint'] = mint
         
-        print("\n--- Preparing Features ---")
-        print("Full features dictionary:")
-        for k, v in features_dict.items():
-            print(f"{k}: {v}")
+        # print("\n--- Preparing Features ---")
+        # print("Full features dictionary:")
+        # for k, v in features_dict.items():
+        #     print(f"{k}: {v}")
         
         # Create a DataFrame with the features
         try:
@@ -49,8 +49,8 @@ class RealTimeEvaluator:
             print(f"DataFrame creation error: {e}")
             raise
         
-        print("\nDataFrame columns:")
-        print(df.columns)
+        # print("\nDataFrame columns:")
+        # print(df.columns)
         
         # Attempt to create dataset
         try:
@@ -73,14 +73,13 @@ class RealTimeEvaluator:
         # Move to device and add batch dimension
         batch = {k: v.unsqueeze(0).to(self.device) for k, v in sample.items()}
         return batch
-
-
+        
     def evaluate_token(self, token_df):
         """Simulate real-time evaluation of a single token"""
         mint = token_df['mint'].iloc[0]
         true_peak = token_df['time_to_peak'].iloc[0]
         
-        print(f"\n=== Evaluating Token: {mint} ===")
+        # print(f"\n=== Evaluating Token: {mint} ===")
         print(f"True peak time: {true_peak}")
         
         # Global features to include
@@ -94,6 +93,7 @@ class RealTimeEvaluator:
         # Track state
         current_time = 0
         final_prediction = None
+        features_dict = global_features.copy()
         
         # Base features to collect
         base_features = [
@@ -103,6 +103,9 @@ class RealTimeEvaluator:
             'trade_concentration', 'unique_wallets'
         ]
         
+        # Granularity windows to consider
+        windows = ['5s', '10s', '20s', '30s']  # Add more if needed
+        
         # Simulate time progression in 5-second intervals
         while current_time <= min(true_peak + 60, 1020):  # Add buffer after true peak
             current_time += 5
@@ -111,42 +114,24 @@ class RealTimeEvaluator:
             if current_time <= self.initial_window:
                 continue
             
-            # Dynamically collect features for the current time window
-            features_dict = global_features.copy()
-            
             # Update available features
             for feature in base_features:
-                # Find all columns for this feature with 0to prefix
-                matching_cols = [
-                    col for col in token_df.columns 
-                    if col.startswith(f'{feature}_0to') and 
-                    int(col.split('0to')[1].replace('s','')) <= current_time
-                ]
-                
-                # Sort to get the most recent time window
-                matching_cols.sort(
-                    key=lambda x: int(x.split('0to')[1].replace('s','')), 
-                    reverse=True
-                )
-                
-                # Add the most recent time window feature
-                if matching_cols:
-                    features_dict[matching_cols[0]] = token_df[matching_cols[0]].iloc[0]
+                for window in windows:
+                    col_name = f'{feature}_0to{window}'
+                    if col_name in token_df.columns:
+                        features_dict[col_name] = token_df[col_name].iloc[0]
             
             # print(f"\nNumber of features collected at time {current_time}: {len(features_dict)}")
-            # print("Collected feature columns:")
-            # for col in features_dict.keys():
-            #     print(col)
             
             # Need minimum number of features before making prediction
             time_window_features = [
                 col for col in features_dict.keys() 
-                if '0to' in col
+                if '0to' in col and any(window in col for window in windows)
             ]
             
-            # if len(time_window_features) < 17 * 2:  # 4 granularities
-            #     # print(f"Not enough time window features: {len(time_window_features)}")
-            #     continue
+            if len(time_window_features) < 17 * 2:  # 4 granularities
+                print(f"Not enough time window features: {len(time_window_features)}")
+                continue
             
             # Prepare features and make prediction
             try:
@@ -154,6 +139,8 @@ class RealTimeEvaluator:
             except Exception as e:
                 print(f"Error preparing features for {mint} at time {current_time}: {str(e)}")
                 continue
+
+            # Rest of the method remains the same...
 
             with torch.no_grad():
                 try:
@@ -164,10 +151,10 @@ class RealTimeEvaluator:
                     confidence_score = torch.sigmoid(confidence).item()
                     predicted_time = time_pred.item()
                     
-                    # print(f"Prediction details at time {current_time}:")
-                    # print(f"Hazard score: {hazard_score}")
-                    # print(f"Confidence score: {confidence_score}")
-                    # print(f"Predicted time: {predicted_time}")
+                    print(f"Prediction details:")
+                    print(f"Hazard score: {hazard_score}")
+                    print(f"Confidence score: {confidence_score}")
+                    print(f"Predicted time: {predicted_time}")
                     
                     # Make final prediction if confident enough
                     if confidence_score > 0.8 or hazard_score > 0.7:
@@ -182,10 +169,6 @@ class RealTimeEvaluator:
                         break
                 except Exception as e:
                     print(f"Prediction error: {str(e)}")
-            
-            # Break if prediction time exceeds true peak
-            if current_time > true_peak:
-                break
         
         # Add results to tracking lists if final_prediction exists
         if final_prediction:
