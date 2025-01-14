@@ -195,7 +195,16 @@ class RealTimeEvaluator:
             self.prediction_times.append(final_prediction['prediction_made_at'])
         else:
             print(f"No final prediction made for token: {mint}")
+    
+    def evaluate_dataset(self, test_df):
+        """Evaluate entire test dataset"""
+        print(f"Evaluating {len(test_df)} tokens...")
         
+        for _, token_df in tqdm(test_df.groupby('mint')):
+            self.evaluate_token(token_df)
+            
+        return self.calculate_metrics()
+    
     def calculate_metrics(self):
         """Calculate evaluation metrics"""
         if not self.true_values or not self.predicted_values:
