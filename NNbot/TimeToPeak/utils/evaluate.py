@@ -39,8 +39,8 @@ class RealTimeEvaluator:
         
         # print("\n--- Preparing Features ---")
         # print("Full features dictionary:")
-        # for k, v in features_dict.items():
-        #     print(f"{k}: {v}")
+        for k, v in features_dict.items():
+            print(f"{k}: {v}")
         
         # Create a DataFrame with the features
         try:
