@@ -4,8 +4,8 @@ import torch.nn.functional as F
 
 class PeakPredictionLoss(nn.Module):
     def __init__(self, 
-                 early_prediction_penalty=1.5,
-                 late_prediction_penalty=1.0,
+                 early_prediction_penalty=1.5, 
+                 late_prediction_penalty=1.0, 
                  pos_weight=10.0,  # Weight for positive class to handle imbalance
                  focal_gamma=2.0,  # Focal loss parameter
                  gaussian_sigma=10.0):  # Sigma for Gaussian peak labeling
@@ -14,6 +14,13 @@ class PeakPredictionLoss(nn.Module):
         1. False positives and false negatives (binary cross entropy)
         2. Early predictions more heavily than late predictions (asymmetric timing penalty)
         3. Low confidence in correct predictions
+        
+        Args:
+            early_prediction_penalty: Weight for penalizing predictions before the true peak
+            late_prediction_penalty: Weight for penalizing predictions after the true peak
+            pos_weight: Weight for positive class
+            focal_gamma: Focal loss parameter to adjust focusing
+            gaussian_sigma: Standard deviation for Gaussian peak labeling
         """
         super().__init__()
         self.early_penalty = early_prediction_penalty
@@ -81,17 +88,17 @@ class PeakPredictionLoss(nn.Module):
         if valid_pred.sum() == 0:
             return peak_logits.sum() * 0.0
         
-        # Calculate time differences
+        # Calculate peak labels based on timing
         time_diffs = timestamps[valid_pred].squeeze() - true_peak_times[valid_pred].squeeze()
         
-        # Create soft peak labels using Gaussian function
+        # Use Gaussian peak labeling instead of binary labels
         peak_labels = self.gaussian_peak_label(time_diffs)
         
         # Ensure shapes match
         peak_logits_valid = peak_logits[valid_pred].squeeze(-1)
         confidence_logits_valid = confidence_logits[valid_pred].squeeze(-1)
         
-        # Calculate focal loss with class balancing
+        # Use focal loss for peak prediction
         peak_loss = self.focal_bce_loss(
             peak_logits_valid,
             peak_labels,
@@ -105,6 +112,7 @@ class PeakPredictionLoss(nn.Module):
             late_mask = (time_diffs > 0) & predictions
             
             timing_weights = torch.ones_like(peak_loss)
+            # Use .any() to prevent indexing errors with empty masks
             if early_mask.any():
                 timing_weights[early_mask] = self.early_penalty
             if late_mask.any():
@@ -112,19 +120,34 @@ class PeakPredictionLoss(nn.Module):
         
         peak_loss = peak_loss * timing_weights
         
-        # Calculate confidence loss with stronger weighting near peaks
-        confidence_target = peak_labels  # Use Gaussian labels for confidence
+        # Calculate confidence targets
+        with torch.no_grad():
+            peak_probs = torch.sigmoid(peak_logits_valid)
+            prediction_error = torch.abs(peak_probs - peak_labels)
+            confidence_target = 1.0 - prediction_error
+            
+            # Higher confidence target for correct predictions around true peak
+            near_peak_mask = time_diffs.abs() <= 10.0  # Wider window for confidence
+            if near_peak_mask.any():
+                confidence_target[near_peak_mask] = torch.max(
+                    confidence_target[near_peak_mask],
+                    1.0 - (time_diffs[near_peak_mask].abs() / 10.0)  # Linear decay
+                )
+        
+        # Confidence loss
         confidence_loss = F.binary_cross_entropy_with_logits(
             confidence_logits_valid,
             confidence_target,
             reduction='none'
         )
         
-        # Weight confidence loss higher near peaks
-        confidence_weights = 1.0 + peak_labels
-        confidence_loss = (confidence_loss * confidence_weights).mean()
+        # Weight confidence loss higher for predictions near peak
+        confidence_weights = torch.ones_like(confidence_loss)
+        if near_peak_mask.any():
+            confidence_weights[near_peak_mask] = 2.0
+        confidence_loss = confidence_loss * confidence_weights
         
         # Combine losses
-        total_loss = peak_loss.mean() + 0.5 * confidence_loss
+        total_loss = peak_loss.mean() + 0.5 * confidence_loss.mean()
         
         return total_loss
