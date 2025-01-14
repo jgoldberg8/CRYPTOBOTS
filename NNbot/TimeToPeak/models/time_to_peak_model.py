@@ -1,3 +1,4 @@
+from ast import Lambda
 import warnings
 import torch
 import torch.nn as nn
@@ -35,6 +36,14 @@ class FeatureExtractor(nn.Module):
     
     def forward(self, x):
         return self.feature_net(x)
+    
+class Lambda(nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+        
+    def forward(self, x):
+        return self.func(x)    
 
 class RealTimePeakPredictor(nn.Module):
     def __init__(self, 
@@ -78,16 +87,17 @@ class RealTimePeakPredictor(nn.Module):
 
 
         
-        # Time-to-peak prediction head
         self.time_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_size // 2, 1),
-            nn.Softplus()  # Ensures positive time predictions
+            nn.Softplus(),
+            # Add scaling layer to map from [0,3] to [30,1020] range
+            Lambda(lambda x: x * 500 + 30)  # Scale and shift the output
         )
-        
+                
         # Update the confidence predictor in __init__
         self.confidence_predictor = nn.Sequential(
             nn.Linear(attention_output_size, hidden_size // 4),

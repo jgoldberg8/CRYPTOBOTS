@@ -14,15 +14,15 @@ class PeakPredictionLoss(nn.Module):
         # Ensure all tensors have batch dimension first
         batch_size = hazard_pred.size(0)
         
-        # Print shapes for debugging
-        print("\nTensor shapes in loss calculation:")
-        print(f"hazard_pred: {hazard_pred.shape}")
-        print(f"time_pred: {time_pred.shape}")
-        print(f"confidence_pred: {confidence_pred.shape}")
-        print(f"peak_proximity: {peak_proximity.shape}")
-        print(f"time_to_peak: {time_to_peak.shape}")
-        print(f"sample_weights: {sample_weights.shape}")
-        print(f"mask: {mask.shape}")
+        # # Print shapes for debugging
+        # print("\nTensor shapes in loss calculation:")
+        # print(f"hazard_pred: {hazard_pred.shape}")
+        # print(f"time_pred: {time_pred.shape}")
+        # print(f"confidence_pred: {confidence_pred.shape}")
+        # print(f"peak_proximity: {peak_proximity.shape}")
+        # print(f"time_to_peak: {time_to_peak.shape}")
+        # print(f"sample_weights: {sample_weights.shape}")
+        # print(f"mask: {mask.shape}")
         
         # Reshape mask to match predictions if necessary
         mask = mask.view(batch_size, -1)
@@ -30,7 +30,7 @@ class PeakPredictionLoss(nn.Module):
         
         # Count valid predictions
         num_valid = valid_pred.sum().item()
-        print(f"Valid predictions: {num_valid}/{batch_size}")
+        # print(f"Valid predictions: {num_valid}/{batch_size}")
         
         if num_valid == 0:
             # Return zero loss (but maintain gradients)
@@ -81,5 +81,9 @@ class PeakPredictionLoss(nn.Module):
             self.time_weight * time_loss +
             self.confidence_weight * confidence_loss
         )
+        print(f"\nPrediction stats:")
+        print(f"Time prediction range: [{time_pred.min().item():.1f}, {time_pred.max().item():.1f}]")
+        print(f"True time range: [{time_to_peak.min().item():.1f}, {time_to_peak.max().item():.1f}]")
+        print(f"Confidence mean: {torch.sigmoid(confidence_pred).mean().item():.3f}")
         
         return total_loss
