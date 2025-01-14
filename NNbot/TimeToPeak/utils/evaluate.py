@@ -54,7 +54,7 @@ class RealTimeEvaluator:
         true_peak = token_df['time_to_peak'].iloc[0]
         
         # print(f"Debugging token: {mint}")
-        print(f"Columns in token_df: {token_df.columns}")
+        # print(f"Columns in token_df: {token_df.columns}")
         
         # Track state
         current_time = 0
