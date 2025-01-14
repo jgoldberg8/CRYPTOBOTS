@@ -40,18 +40,34 @@ class RealTimeEvaluator:
     def evaluate_token(self, token_df):
         """Evaluate a single token's data and make one prediction"""
         dataset = MultiGranularTokenDataset(token_df, train=False, 
-                                          scaler=self.scaler,
-                                          initial_window=self.initial_window)
+                                        scaler=self.scaler,
+                                        initial_window=self.initial_window)
         
         mint = token_df['mint'].iloc[0]
         true_time = token_df['time_to_peak'].iloc[0]
         
+        # Make sure we have enough data points
+        if len(dataset) <= self.initial_window:
+            print(f"Warning: Token {mint} has insufficient data points ({len(dataset)} ≤ {self.initial_window})")
+            return
+        
         # Make single prediction after initial window
         with torch.no_grad():
-            sample = dataset[self.initial_window]
-            batch = {k: v.unsqueeze(0).to(self.device) 
-                    for k, v in sample.items()}
+            # Get first valid prediction point
+            valid_idx = None
+            for idx in range(len(dataset)):
+                sample = dataset[idx]
+                batch = {k: v.unsqueeze(0).to(self.device) 
+                        for k, v in sample.items()}
+                if batch['mask'].bool().item():  # Check if this is a valid prediction point
+                    valid_idx = idx
+                    break
             
+            if valid_idx is None:
+                print(f"Warning: No valid prediction points found for token {mint}")
+                return
+                
+            # Make prediction at first valid point
             hazard_prob, time_pred, confidence = self.model(batch)
             
             # Store true and predicted values for plotting
