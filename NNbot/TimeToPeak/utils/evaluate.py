@@ -106,7 +106,7 @@ class RealTimeEvaluator:
             
             # Need minimum number of features before making prediction
             # if len(features_dict) < 17 * 2:  # 4 granularities
-                continue
+                # continue
                 
             # Prepare features and make prediction
             try:
