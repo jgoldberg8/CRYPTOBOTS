@@ -277,6 +277,12 @@ def main():
         Path("checkpoints").mkdir(exist_ok=True)
         Path("results").mkdir(exist_ok=True)
         
+        # Clean up old scalers if they exist
+        scaler_path = Path("checkpoints/scalers.pt")
+        if scaler_path.exists():
+            print("Removing old scalers to ensure compatibility with new feature set...")
+            scaler_path.unlink()
+        
         # Load data
         print("Loading data...")
         df = pd.read_csv('data/temp.csv')
@@ -292,6 +298,17 @@ def main():
         # Create datasets
         print("Creating datasets...")
         train_dataset = TimePeakDataset(train_df, train=True)
+        
+        # Save feature configuration for future reference
+        feature_config = {
+            'time_windows': train_dataset.time_windows,
+            'base_features': train_dataset.base_features,
+            'total_features': train_dataset.feature_size
+        }
+        
+        with open('checkpoints/feature_config.json', 'w') as f:
+            json.dump(feature_config, f, indent=4)
+        
         val_dataset = TimePeakDataset(
             val_df,
             scaler=train_dataset.scalers,
@@ -318,6 +335,9 @@ def main():
         # Calculate feature size
         sample = next(iter(train_loader))
         feature_size = sample['features'].shape[1]
+        
+        print(f"Feature size: {feature_size}")
+        print(f"Time windows being used: {train_dataset.time_windows}")
         
         # Initialize model
         print("Initializing model...")
@@ -353,7 +373,7 @@ def main():
                 'train_size': len(train_df),
                 'val_size': len(val_df)
             },
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.datetime.now().isoformat()
         }
         
         with open('checkpoints/training_info.json', 'w') as f:
