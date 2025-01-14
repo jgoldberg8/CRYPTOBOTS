@@ -54,15 +54,22 @@ class PeakPredictionLoss(nn.Module):
             torch.tensor(self.pos_weight).to(peak_logits.device)
         )
         
-        # Add timing penalty
+        # Add timing penalty (with safe handling)
         with torch.no_grad():
             predictions = torch.sigmoid(peak_logits_valid) > 0.5
-            early_mask = (time_diffs < 0) & predictions
-            late_mask = (time_diffs > 0) & predictions
             
+            # Safe handling of empty tensors
             timing_weights = torch.ones_like(peak_loss)
-            timing_weights[early_mask] = self.early_penalty
-            timing_weights[late_mask] = self.late_penalty
+            
+            # Check if there are any early predictions
+            early_mask = (time_diffs < 0) & predictions
+            if early_mask.any():
+                timing_weights[early_mask] = self.early_penalty
+            
+            # Check if there are any late predictions
+            late_mask = (time_diffs > 0) & predictions
+            if late_mask.any():
+                timing_weights[late_mask] = self.late_penalty
         
         peak_loss = peak_loss * timing_weights
         

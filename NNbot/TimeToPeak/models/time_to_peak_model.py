@@ -370,7 +370,7 @@ def main():
             'val_loss': float(best_val_loss),
             'model_config': {
                 'feature_size': feature_size,
-                'hidden_size': 256,
+                'hidden_size': 512,
                 'dropout_rate': 0.4
             },
             'training_config': {
