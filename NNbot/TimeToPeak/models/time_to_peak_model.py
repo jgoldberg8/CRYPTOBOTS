@@ -1,3 +1,5 @@
+import datetime
+import json
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -5,7 +7,9 @@ import torch.nn.functional as F
 from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from pathlib import Path
+from torch.utils.data import DataLoader
 
+from TimeToPeak.datasets.time_token_dataset import TimePeakDataset
 from TimeToPeak.utils.time_loss import PeakPredictionLoss
 from TimeToPeak.utils.clean_dataset import clean_dataset
 
@@ -274,7 +278,7 @@ def main():
         
         # Load data
         print("Loading data...")
-        df = pd.read_csv('time-data.csv')
+        df = pd.read_csv('data/time-data.csv')
         df = clean_dataset(df)
         
         # Split data (80-20)
@@ -286,8 +290,8 @@ def main():
         
         # Create datasets
         print("Creating datasets...")
-        train_dataset = TokenPeakDataset(train_df, train=True)
-        val_dataset = TokenPeakDataset(
+        train_dataset = TimePeakDataset(train_df, train=True)
+        val_dataset = TimePeakDataset(
             val_df,
             scaler=train_dataset.scalers,
             train=False
