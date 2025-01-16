@@ -31,9 +31,13 @@ class TradingSimulator:
         self.global_scaler = None
         self.target_scaler = None
         
-        # Load models and scalers
-        self.peak_before_30_model, self.global_scaler = self._load_peak_before_30_model(peak_before_30_model_path)
-        self.peak_market_cap_model, self.target_scaler = self._load_peak_market_cap_model(peak_market_cap_model_path)
+        model_data = self._load_peak_before_30_model(peak_before_30_model_path)
+        self.peak_before_30_model = model_data['model']
+        self.global_scaler = model_data['scaler']
+        
+        market_cap_data = self._load_peak_market_cap_model(peak_market_cap_model_path)
+        self.peak_market_cap_model = market_cap_data['model']
+        self.target_scaler = market_cap_data['target_scaler']
         # Trading state management
         self.active_tokens = {}  # Tokens we're currently tracking
         self.positions = {}      # Tokens we've bought and are holding
@@ -55,24 +59,27 @@ class TradingSimulator:
         }
 
     def _load_peak_before_30_model(self, model_path):
-        """Load the peak before 30 prediction model and get scaler"""
-        checkpoint = torch.load(model_path, map_location=self.device)
-        
-        # Initialize model
-        model = HitPeakBefore30Predictor(
-            input_size=11,
-            hidden_size=256,
-            num_layers=3, 
-            dropout_rate=0.5
-        ).to(self.device)
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        
-        # Get scaler from checkpoint
-        global_scaler = checkpoint.get('global_scaler')
-        
-        return model, global_scaler
+      """Load the peak before 30 prediction model and get scaler"""
+      checkpoint = torch.load(model_path, map_location=self.device)
+      
+      # Initialize model
+      model = HitPeakBefore30Predictor(
+          input_size=11,
+          hidden_size=256,
+          num_layers=3, 
+          dropout_rate=0.5
+      ).to(self.device)
+      
+      model.load_state_dict(checkpoint['model_state_dict'])
+      model.eval()
+      
+      # Get scaler from checkpoint
+      global_scaler = checkpoint.get('global_scaler')
+      
+      return {
+          'model': model,
+          'scaler': global_scaler
+      }
 
     def _load_peak_market_cap_model(self, model_path):
       """Load the peak market cap prediction model"""
@@ -93,7 +100,11 @@ class TradingSimulator:
       global_scaler = checkpoint.get('global_scaler')
       target_scaler = checkpoint.get('target_scaler')
       
-      return model, global_scaler, target_scaler
+      return {
+          'model': model,
+          'global_scaler': global_scaler,
+          'target_scaler': target_scaler
+      }
 
 
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
