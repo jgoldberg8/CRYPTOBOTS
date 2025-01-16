@@ -451,25 +451,21 @@ class TradingSimulator:
               on_message=self.on_message,
               on_error=self.on_error,
               on_close=self.on_close,
-              on_open=self.on_open,
-              on_ping=self.on_ping,
-              on_pong=self.on_pong
+              on_open=self.on_open
           )
           
           # Add websocket options for stability
           websocket_options = {
-              'reconnect': 5,
               'ping_interval': 30,
               'ping_timeout': 10,
-              'skip_utf8_validation': True,
-              'suppress_origin': True
+              'skip_utf8_validation': True
           }
           
           print(f"Attempting to connect to: {self.config['websocket_url']}")
           self.ws.run_forever(**websocket_options)
           
       except Exception as e:
-          self.logger.error(f"Connection error: {e}")
+          self.logger.error(f"Connection error: {str(e)}")
           print(f"Detailed connection error: {str(e)}")
           time.sleep(5)
           threading.Thread(target=self.connect, daemon=True).start()
