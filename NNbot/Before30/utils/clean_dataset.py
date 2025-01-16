@@ -10,6 +10,8 @@ def clean_dataset(df):
     """
     # Create a copy at the start to avoid fragmentation
     df = df.copy()
+    df = df.dropna(subset=critical_cols)
+    df = df[df['time_to_peak'] < 180]
     
     # Drop records with missing critical initial window features
     critical_cols = [
