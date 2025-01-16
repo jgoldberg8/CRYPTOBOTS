@@ -511,10 +511,14 @@ class TradingSimulator:
               
               try:
                   # For Before30 model (expects 7 global features)
-                  global_features_before30 = torch.FloatTensor(features['global']).reshape(1, 7).to(self.device)
+                  global_features = features['global']  # Should already be shape [1, 7]
+                  if len(global_features.shape) == 1:
+                      global_features = global_features.reshape(1, -1)
+                  global_features = torch.FloatTensor(global_features).to(self.device)
+                  
                   peak_before_30_pred = self.peak_before_30_model(
                       x_5s, x_10s, x_20s, x_30s,
-                      global_features_before30, quality_features
+                      global_features, quality_features
                   )
                   
                   # Convert to probability
@@ -524,8 +528,7 @@ class TradingSimulator:
                   if prob_peaked < 0.5:
                       self.logger.info("Token hasn't peaked - Running peak_market_cap model...")
                       
-                      # For Market Cap model (expects 5 global features)
-                      # Prepare specific global features for market cap model
+                      # For Market Cap model, extract only the needed 5 features
                       market_cap_features = np.array([[
                           features['global'][0, 1],  # initial_market_cap
                           features['global'][0, 2],  # volume_pressure
@@ -533,6 +536,13 @@ class TradingSimulator:
                           features['global'][0, 4],  # price_volatility
                           features['global'][0, 6]   # momentum
                       ]])
+                      # Add after preparing the features but before the peak_before_30_pred
+                      self.logger.info(f"Before30 global features shape: {global_features.shape}")
+                      self.logger.info(f"x_5s shape: {x_5s.shape}")
+                      self.logger.info(f"quality_features shape: {quality_features.shape}")
+
+          # Add before the peak_pred
+                      self.logger.info(f"Market cap global features shape: {global_features_market_cap.shape}")
                       global_features_market_cap = torch.FloatTensor(market_cap_features).to(self.device)
                       
                       peak_pred = self.peak_market_cap_model(
@@ -573,7 +583,6 @@ class TradingSimulator:
       except Exception as e:
           self.logger.error(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
           return False
-    
 
     def handle_transaction(self, transaction):
       """Handle incoming transaction data"""
