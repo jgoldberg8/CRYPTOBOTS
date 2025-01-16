@@ -467,28 +467,35 @@ class TradingSimulator:
               self.logger.warning(f"Could not calculate features for {token_mint}")
               return False
 
-          # Prepare model inputs - reshape to correct dimensions
-          # Should be [batch_size, sequence_length, features]
+          # Debug log the input shapes
+          self.logger.debug(f"Features before reshaping:")
+          self.logger.debug(f"Global features shape: {features['global'].shape}")
+          for window in ['5s', '10s', '20s', '30s']:
+              self.logger.debug(f"{window} shape: {features['data'][window].shape}")
+
+          # Prepare model inputs with correct shapes
           x_5s = torch.FloatTensor(features['data']['5s']).reshape(1, -1, 11).to(self.device)
           x_10s = torch.FloatTensor(features['data']['10s']).reshape(1, -1, 11).to(self.device)
           x_20s = torch.FloatTensor(features['data']['20s']).reshape(1, -1, 11).to(self.device)
           x_30s = torch.FloatTensor(features['data']['30s']).reshape(1, -1, 11).to(self.device)
-          global_features = torch.FloatTensor(features['global']).reshape(1, -1).to(self.device)
+          
+          # Reshape global features to match expected dimensions (batch_size, feature_dim)
+          global_features = torch.FloatTensor(features['global']).reshape(1, 7).to(self.device)  # 7 is the expected global feature dimension
           quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
+
+          # Debug log the reshaped tensors
+          self.logger.debug(f"\nReshaped tensor shapes:")
+          self.logger.debug(f"x_5s: {x_5s.shape}")
+          self.logger.debug(f"x_10s: {x_10s.shape}")
+          self.logger.debug(f"x_20s: {x_20s.shape}")
+          self.logger.debug(f"x_30s: {x_30s.shape}")
+          self.logger.debug(f"global_features: {global_features.shape}")
+          self.logger.debug(f"quality_features: {quality_features.shape}")
 
           # Make predictions with error handling
           with torch.no_grad():
               self.logger.info(f"\n{'='*50}")
               self.logger.info(f"PREDICTION - Token: {token_mint}")
-              
-              # Print tensor shapes for debugging
-              self.logger.debug(f"Input shapes:")
-              self.logger.debug(f"x_5s: {x_5s.shape}")
-              self.logger.debug(f"x_10s: {x_10s.shape}")
-              self.logger.debug(f"x_20s: {x_20s.shape}")
-              self.logger.debug(f"x_30s: {x_30s.shape}")
-              self.logger.debug(f"global_features: {global_features.shape}")
-              self.logger.debug(f"quality_features: {quality_features.shape}")
               
               try:
                   peak_before_30_pred = self.peak_before_30_model(
@@ -500,7 +507,6 @@ class TradingSimulator:
                   prob_peaked = torch.sigmoid(peak_before_30_pred).item()
                   self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
                   
-                  # If probability of having peaked is low, predict final peak
                   if prob_peaked < 0.5:
                       self.logger.info("Token hasn't peaked - Running peak_market_cap model...")
                       peak_pred = self.peak_market_cap_model(
@@ -541,6 +547,7 @@ class TradingSimulator:
       except Exception as e:
           self.logger.error(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
           return False
+    
 
     def handle_transaction(self, transaction):
         """Handle incoming transaction data"""
