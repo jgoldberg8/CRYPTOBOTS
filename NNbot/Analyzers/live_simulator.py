@@ -193,53 +193,68 @@ class TradingSimulator:
         return dataset._preprocess_data(df, fit=False)
 
     def _should_enter_trade(self, token_mint):
-        """Determine if we should enter a trade based on model predictions"""
-        token_data = self.active_tokens[token_mint]
-        
-        # Ensure we have 30 seconds of data
-        if len(token_data['transactions']) < 5:  # Minimum transactions threshold
-            return False
-            
-        # Calculate features
-        features = self._calculate_features(token_data)
-        if features is None:
-            return False
+      """Determine if we should enter a trade based on model predictions"""
+      token_data = self.active_tokens[token_mint]
+      
+      # Ensure we have 30 seconds of data
+      if len(token_data['transactions']) < 5:  # Minimum transactions threshold
+          return False
+          
+      # Calculate features
+      features = self._calculate_features(token_data)
+      if features is None:
+          return False
 
-        # Create dataset inputs
-        x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
-        x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
-        x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
-        x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
-        global_features = torch.FloatTensor(features['global']).to(self.device)
-        quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
-        
-        # Make prediction with peak_before_30 model
-        with torch.no_grad():
-            peak_before_30_pred = self.peak_before_30_model(
-                x_5s, x_10s, x_20s, x_30s,
-                global_features, quality_features
-            )
-            
-            # Convert to probability
-            prob_peaked = torch.sigmoid(peak_before_30_pred).item()
-            
-            # If probability of having peaked is low, predict final peak
-            if prob_peaked < 0.5:
-                peak_pred = self.peak_market_cap_model(
-                    x_5s, x_10s, x_20s, x_30s,
-                    global_features, quality_features
-                )
-                
-                # Convert prediction back to original scale
-                dummy_pred = np.zeros((1, 2))
-                dummy_pred[:, 0] = peak_pred.cpu().numpy()
-                transformed_pred = dataset.target_scaler.inverse_transform(dummy_pred)
-                final_pred = np.expm1(transformed_pred[0, 0])
-                
-                token_data['predicted_peak'] = final_pred
-                return True
-                
-        return False
+      # Create dataset inputs
+      x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
+      x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
+      x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
+      x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
+      global_features = torch.FloatTensor(features['global']).to(self.device)
+      quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
+      
+      # Make prediction with peak_before_30 model
+      with torch.no_grad():
+          # First model prediction
+          print(f"\n{'*'*50}")
+          print(f"PREDICTION - Token: {token_mint}")
+          print(f"Running peak_before_30 model...")
+          
+          peak_before_30_pred = self.peak_before_30_model(
+              x_5s, x_10s, x_20s, x_30s,
+              global_features, quality_features
+          )
+          
+          # Convert to probability
+          prob_peaked = torch.sigmoid(peak_before_30_pred).item()
+          print(f"Probability already peaked: {prob_peaked:.2%}")
+          
+          # If probability of having peaked is low, predict final peak
+          if prob_peaked < 0.5:
+              print("Token hasn't peaked - Running peak_market_cap model...")
+              peak_pred = self.peak_market_cap_model(
+                  x_5s, x_10s, x_20s, x_30s,
+                  global_features, quality_features
+              )
+              
+              # Convert prediction back to original scale
+              dummy_pred = np.zeros((1, 2))
+              dummy_pred[:, 0] = peak_pred.cpu().numpy()
+              transformed_pred = dataset.target_scaler.inverse_transform(dummy_pred)
+              final_pred = np.expm1(transformed_pred[0, 0])
+              
+              print(f"Predicted peak market cap: {final_pred:.4f}")
+              print(f"Current market cap: {token_data['current_market_cap']:.4f}")
+              print(f"Potential upside: {((final_pred/token_data['current_market_cap'] - 1) * 100):.2f}%")
+              
+              token_data['predicted_peak'] = final_pred
+              print(f"{'*'*50}\n")
+              return True
+          else:
+              print("Token predicted to have already peaked - Skipping trade")
+              print(f"{'*'*50}\n")
+              
+      return False
 
     def _write_trade_to_file(self, trade_data):
       """Write trade details to the PnL file"""
