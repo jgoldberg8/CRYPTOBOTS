@@ -54,6 +54,26 @@ class TradingSimulator:
             'positions': []
         }
 
+    def _load_peak_before_30_model(self, model_path):
+        """Load the peak before 30 prediction model and get scaler"""
+        checkpoint = torch.load(model_path, map_location=self.device)
+        
+        # Initialize model
+        model = HitPeakBefore30Predictor(
+            input_size=11,
+            hidden_size=256,
+            num_layers=3, 
+            dropout_rate=0.5
+        ).to(self.device)
+        
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        
+        # Get scaler from checkpoint
+        global_scaler = checkpoint.get('global_scaler')
+        
+        return model, global_scaler
+
     def _load_peak_market_cap_model(self, model_path):
       """Load the peak market cap prediction model"""
       checkpoint = torch.load(model_path, map_location=self.device)
