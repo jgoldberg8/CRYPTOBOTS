@@ -257,7 +257,13 @@ class TradingSimulator:
           
           # Convert to DataFrame
           df = pd.DataFrame([features])
-          df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
+          
+          # Convert creation_time to numeric format
+          creation_time = token_data['creation_time']
+          if isinstance(creation_time, str):
+              creation_time = pd.to_datetime(creation_time)
+          df['creation_time'] = creation_time.strftime("%Y-%m-%d %H:%M:%S")
+          df['creation_time_numeric'] = creation_time.timestamp()
           
           # Add peak_market_cap column for market cap predictions
           if 'predicted_peak' in token_data:
@@ -780,11 +786,12 @@ class TradingSimulator:
             self.logger.error(f"Error sending subscription messages: {e}")
 
     def on_ping(self, ws, message):
-        """Handle ping messages"""
-        try:
-            ws.pong(message)
-        except Exception as e:
-            self.logger.error(f"Error sending pong: {e}")
+      """Handle ping messages"""
+      try:
+          # Correct way to send pong in websocket-client
+          ws.send(message, websocket.ABNF.OPCODE_PONG)
+      except Exception as e:
+          self.logger.error(f"Error sending pong: {e}")
 
     def print_trading_metrics(self):
         """Print current trading metrics"""
