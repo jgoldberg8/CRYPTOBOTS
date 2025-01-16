@@ -575,34 +575,105 @@ class TradingSimulator:
 
 def main():
     """Main function to run the trading simulator"""
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    # Configuration
     config = {
         'websocket_url': 'wss://pumpportal.fun/api/data',
     }
     
-    # Model paths
+    # Model paths (ensure these exist)
     peak_before_30_model_path = 'best_hit_peak_before_30_model.pth'
     peak_market_cap_model_path = 'best_peak_market_cap_model.pth'
 
+    # Verify model files exist
+    for model_path in [peak_before_30_model_path, peak_market_cap_model_path]:
+        if not os.path.exists(model_path):
+            logger.error(f"Model file not found: {model_path}")
+            return
+
     try:
-        print("Starting trading simulator...")
+        print("\n" + "="*50)
+        print("Starting Trading Simulator")
+        print("="*50 + "\n")
+
+        # Initialize simulator
         simulator = TradingSimulator(
             config,
             peak_before_30_model_path,
             peak_market_cap_model_path
         )
         
-        # Start trading simulation
-        print("Initiating WebSocket connection...")
-        simulator.connect()
+        # Start WebSocket connection in a separate thread
+        websocket_thread = threading.Thread(
+            target=simulator.connect,
+            daemon=True
+        )
+        websocket_thread.start()
         
-        # Print metrics every 5 minutes
-        while True:
-            time.sleep(300)
+        # Main loop with proper interrupt handling
+        try:
+            while True:
+                time.sleep(300)  # Print metrics every 5 minutes
+                simulator.print_trading_metrics()
+                
+                # Check if websocket is still alive
+                if not websocket_thread.is_alive():
+                    logger.warning("WebSocket connection lost, restarting...")
+                    websocket_thread = threading.Thread(
+                        target=simulator.connect,
+                        daemon=True
+                    )
+                    websocket_thread.start()
+                
+        except KeyboardInterrupt:
+            print("\n\n" + "="*50)
+            print("Shutting down gracefully...")
+            print("="*50 + "\n")
+            
+            # Print final metrics
             simulator.print_trading_metrics()
             
-    except KeyboardInterrupt:
-        print("\nTrading simulation stopped by user.")
-        simulator.print_trading_metrics()
+            # Clean up
+            if simulator.ws:
+                simulator.ws.close()
+            
+            # Wait for websocket thread to finish
+            websocket_thread.join(timeout=5)
+            
+            print("\nTrading simulation stopped by user.")
+            
     except Exception as e:
-        print(f"Critical error in trading simulation: {e}")
-        print(f"Detailed error: {str(e)}")
+        logger.error(f"Critical error in trading simulation: {str(e)}")
+        print(f"\nDetailed error: {str(e)}")
+        
+        # Print stack trace for debugging
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        # Ensure final metrics are saved
+        try:
+            if 'simulator' in locals():
+                simulator.print_trading_metrics()
+                
+                # Save final state to file
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                with open(f'final_state_{timestamp}.json', 'w') as f:
+                    json.dump({
+                        'total_trades': simulator.trading_metrics['total_trades'],
+                        'successful_trades': simulator.trading_metrics['successful_trades'],
+                        'total_profit_loss': simulator.trading_metrics['total_profit_loss'],
+                        'last_positions': simulator.trading_metrics['positions'][-5:] if simulator.trading_metrics['positions'] else []
+                    }, f, indent=4)
+                
+        except Exception as e:
+            logger.error(f"Error saving final state: {str(e)}")
+
+if __name__ == "__main__":
+    main()
