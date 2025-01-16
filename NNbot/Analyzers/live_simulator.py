@@ -496,7 +496,7 @@ class TradingSimulator:
           
       self.is_connecting = True
       try:
-          websocket.enableTrace(True)  # Enable detailed websocket logging
+          websocket.enableTrace(False)  # Enable detailed websocket logging
           
           self.ws = websocket.WebSocketApp(
               self.config['websocket_url'],
