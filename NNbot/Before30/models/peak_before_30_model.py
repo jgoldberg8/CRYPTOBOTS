@@ -31,6 +31,14 @@ class HitPeakBefore30Predictor(nn.Module):
         else:
             self.global_feature_dim = global_feature_dim
 
+        self.value_range_embedding = nn.Sequential(
+            nn.Linear(self.global_feature_dim, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, hidden_size)
+        )    
+
         # Enhanced time-aware CNN layers
         self.conv_5s = nn.Sequential(
             nn.Conv1d(input_size, hidden_size, kernel_size=3, padding=1),
