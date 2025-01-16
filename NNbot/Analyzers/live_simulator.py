@@ -222,8 +222,18 @@ class TradingSimulator:
       df = pd.DataFrame([features])
       df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
       
+      # Fit the scaler before transforming
+      if not hasattr(self, '_features_scaler'):
+          from sklearn.preprocessing import StandardScaler
+          self._features_scaler = StandardScaler()
+          # Fit the scaler on the current features
+          self._features_scaler.fit(df)
+      
       # Create dataset with our stored scalers
-      dataset = TokenDataset(df, scaler={'global': self.global_scaler, 'target': self.target_scaler}, train=False)
+      dataset = TokenDataset(df, 
+          scaler={'global': self._features_scaler, 'target': self.target_scaler}, 
+          train=False
+      )
       
       return dataset._preprocess_data(df, fit=False)
     def _should_enter_trade(self, token_mint):
