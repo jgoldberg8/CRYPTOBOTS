@@ -216,7 +216,7 @@ class PeakMarketCapPredictor(nn.Module):
 
 
 def train_peak_market_cap_model(train_loader, val_loader, 
-                               num_epochs=300,               # Increased for larger dataset
+                               num_epochs=500,               # Increased for larger dataset
                                # Architecture parameters 
                                hidden_size=1024,             # Increased from 384 due to more data
                                num_layers=4,                # Keep 4 for sequence processing
