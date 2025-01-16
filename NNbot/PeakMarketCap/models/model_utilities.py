@@ -31,7 +31,7 @@ def clean_dataset(df):
     ]
     df = df.dropna(subset=critical_cols)
     df = df[df['time_to_peak'] > 30]
-    f = df[df['time_to_peak'] < 180]
+    f = df[df['time_to_peak'] < 1020]
     
     # Identify different feature types
     momentum_cols = [col for col in df.columns if 'momentum' in col]
