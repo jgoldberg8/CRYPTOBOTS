@@ -373,39 +373,47 @@ class TradingSimulator:
               token_data['trade_status'] = 'sold'
 
     def handle_transaction(self, transaction):
-        """Handle incoming transaction data"""
-        mint = transaction['mint']
-        current_time = datetime.now()
-        
-        # Initialize token data if new
-        if mint not in self.active_tokens:
-            self.active_tokens[mint] = self._initialize_token_data(transaction)
-        
-        token_data = self.active_tokens[mint]
-        
-        # Update token data
-        if not token_data['first_trade_time']:
-            token_data['first_trade_time'] = current_time
-            token_data['initial_market_cap'] = transaction['marketCapSol']
-        
-        token_data['transactions'].append({
-            'timestamp': current_time,
-            **transaction
-        })
-        token_data['current_market_cap'] = transaction['marketCapSol']
-        
-        # Trading logic
-        if token_data['trade_status'] == 'monitoring':
-            time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
-            
-            # Check if we should make a trading decision (after 30 seconds)
-            if time_since_first >= 30 and self._should_enter_trade(mint):
-                self._execute_trade(mint, 'buy')
-                
-        elif token_data['trade_status'] == 'bought':
-            # Check if we should sell based on predicted peak
-            if token_data['current_market_cap'] >= token_data['predicted_peak']:
-                self._execute_trade(mint, 'sell')
+      """Handle incoming transaction data"""
+      mint = transaction['mint']
+      current_time = datetime.now()
+      
+      # Debug print
+      print(f"Received transaction for token: {mint}")
+      
+      # Initialize token data if new
+      if mint not in self.active_tokens:
+          print(f"New token detected: {mint}")
+          self.active_tokens[mint] = self._initialize_token_data(transaction)
+      
+      token_data = self.active_tokens[mint]
+      
+      # Update token data
+      if not token_data['first_trade_time']:
+          print(f"First trade for token: {mint}")
+          token_data['first_trade_time'] = current_time
+          token_data['initial_market_cap'] = transaction['marketCapSol']
+      
+      token_data['transactions'].append({
+          'timestamp': current_time,
+          **transaction
+      })
+      token_data['current_market_cap'] = transaction['marketCapSol']
+      
+      # Trading logic
+      if token_data['trade_status'] == 'monitoring':
+          time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
+          print(f"Token {mint} monitoring time: {time_since_first:.2f} seconds")
+          
+          # Check if we should make a trading decision (after 30 seconds)
+          if time_since_first >= 30:
+              print(f"Evaluating trade entry for token: {mint}")
+              if self._should_enter_trade(mint):
+                  self._execute_trade(mint, 'buy')
+                  
+      elif token_data['trade_status'] == 'bought':
+          # Check if we should sell based on predicted peak
+          if token_data['current_market_cap'] >= token_data['predicted_peak']:
+              self._execute_trade(mint, 'sell')
 
     def on_message(self, ws, message):
         """Handle WebSocket message"""
