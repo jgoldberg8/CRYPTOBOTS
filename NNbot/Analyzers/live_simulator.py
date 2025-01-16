@@ -248,15 +248,20 @@ class TradingSimulator:
                   )
                   for feature, value in metrics.items():
                       features[f'{feature}_{window_key}'] = value
+
+          # Create base DataFrame with explicit index
+          base_data = {
+              'initial_investment_ratio': token_data['initial_investment_ratio'],
+              'initial_market_cap': token_data['initial_market_cap'],
+              'buy_sell_ratio': token_data['buy_sell_ratio'],
+              'volume_pressure': token_data['volume_pressure']
+          }
           
-          # Create DataFrame with features
-          df = pd.DataFrame([features])
+          # Add time window features to base data
+          base_data.update(features)
           
-          # Add global features
-          df['initial_investment_ratio'] = token_data['initial_investment_ratio']
-          df['initial_market_cap'] = token_data['initial_market_cap']
-          df['buy_sell_ratio'] = token_data['buy_sell_ratio']
-          df['volume_pressure'] = token_data['volume_pressure']
+          # Create DataFrame with single row and explicit index
+          df = pd.DataFrame([base_data])
           
           # Convert creation_time to numeric format
           creation_time = token_data['creation_time']
@@ -269,19 +274,21 @@ class TradingSimulator:
           is_peak_pred = 'predicted_peak' in token_data
           
           if is_peak_pred:
-              # Global features for Market Cap model
-              market_cap_global_features = pd.DataFrame([{
+              # Global features for Market Cap model with matching index
+              market_cap_global_features = {
                   'initial_market_cap': token_data['initial_market_cap'],
                   'volume_pressure': token_data['volume_pressure'],
                   'buy_sell_ratio': token_data['buy_sell_ratio'],
                   'price_volatility': features['price_volatility_0to30s'],
                   'momentum': features['momentum_0to30s']
-              }])
-              df = pd.concat([df, market_cap_global_features], axis=1)
+              }
+              # Update existing DataFrame instead of concatenating
+              for key, value in market_cap_global_features.items():
+                  df[key] = value
               df['peak_market_cap'] = token_data['current_market_cap']
           else:
-              # Global features for Before30 model
-              before30_global_features = pd.DataFrame([{
+              # Global features for Before30 model with matching index
+              before30_global_features = {
                   'initial_investment_ratio': token_data['initial_investment_ratio'],
                   'initial_market_cap': token_data['initial_market_cap'],
                   'volume_pressure': token_data['volume_pressure'],
@@ -289,8 +296,10 @@ class TradingSimulator:
                   'price_volatility': features['price_volatility_0to30s'],
                   'volume_volatility': features['volume_volatility_0to30s'],
                   'momentum': features['momentum_0to30s']
-              }])
-              df = pd.concat([df, before30_global_features], axis=1)
+              }
+              # Update existing DataFrame instead of concatenating
+              for key, value in before30_global_features.items():
+                  df[key] = value
 
           # Create dataset with correct scalers
           dataset = TokenDataset(
@@ -308,10 +317,12 @@ class TradingSimulator:
               return None
           
           # Store the appropriate global features
-          processed_data['global'] = (
-              np.array(list(market_cap_global_features.iloc[0])) if is_peak_pred 
-              else np.array(list(before30_global_features.iloc[0]))
-          )
+          if is_peak_pred:
+              global_features_array = np.array([list(market_cap_global_features.values())])
+          else:
+              global_features_array = np.array([list(before30_global_features.values())])
+          
+          processed_data['global'] = global_features_array.squeeze()
           
           # Reshape features for each time window
           for window_type in ['5s', '10s', '20s', '30s']:
