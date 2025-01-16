@@ -1,0 +1,478 @@
+from Before30.models.peak_before_30_model import HitPeakBefore30Predictor
+from PeakMarketCap.models.peak_market_cap_model import PeakMarketCapPredictor
+from PeakMarketCap.models.token_dataset import TokenDataset
+import websocket
+import json
+import os
+import time
+import logging
+import threading
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from collections import defaultdict
+import torch
+import pandas as pd
+
+class TradingSimulator:
+    def __init__(self, config, peak_before_30_model_path, peak_market_cap_model_path):
+        # Initialize logging
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize WebSocket configuration
+        self.config = config
+        self.ws = None
+        self.is_connecting = False
+        self._subscribed_tokens = set()
+        
+        # Load ML models
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.peak_before_30_model = self._load_peak_before_30_model(peak_before_30_model_path)
+        self.peak_market_cap_model = self._load_peak_market_cap_model(peak_market_cap_model_path)
+        
+        # Trading state management
+        self.active_tokens = {}  # Tokens we're currently tracking
+        self.positions = {}      # Tokens we've bought and are holding
+        
+        # Time windows for data collection
+        self.time_windows = {
+            '5s': [(0, 5), (5, 10), (10, 15), (15, 20), (20, 25), (25, 30)],
+            '10s': [(0, 10), (10, 20), (20, 30)],
+            '20s': [(0, 20)],
+            '30s': [(0, 30)]
+        }
+        
+        # Trading metrics
+        self.trading_metrics = {
+            'total_trades': 0,
+            'successful_trades': 0,
+            'total_profit_loss': 0,
+            'positions': []
+        }
+
+    def _load_peak_before_30_model(self, model_path):
+        """Load the peak before 30 prediction model"""
+        checkpoint = torch.load(model_path, map_location=self.device)
+        model = HitPeakBefore30Predictor(
+            input_size=11,
+            hidden_size=256,
+            num_layers=3,
+            dropout_rate=0.5
+        ).to(self.device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        return model
+
+    def _load_peak_market_cap_model(self, model_path):
+        """Load the peak market cap prediction model"""
+        checkpoint = torch.load(model_path, map_location=self.device)
+        model = PeakMarketCapPredictor(
+            input_size=11,
+            hidden_size=1024,
+            num_layers=4,
+            dropout_rate=0.4
+        ).to(self.device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        return model
+
+    def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
+        """Calculate metrics for a specific timeframe"""
+        # Default metrics for empty windows
+        default_metrics = {
+            'transaction_count': 0,
+            'buy_pressure': 0,
+            'volume': 0,
+            'rsi': 50,  # Neutral RSI when no data
+            'price_volatility': 0,
+            'volume_volatility': 0,
+            'momentum': 0,
+            'trade_amount_variance': 0,
+            'transaction_rate': 0,
+            'trade_concentration': 0,
+            'unique_wallets': 0
+        }
+
+        # Calculate interval times
+        interval_start = start_time + timedelta(seconds=start)
+        interval_end = start_time + timedelta(seconds=end)
+        
+        # Filter transactions within window
+        window_txs = [tx for tx in transactions 
+                     if interval_start <= tx['timestamp'] <= interval_end]
+
+        if not window_txs:
+            return default_metrics
+
+        # Calculate basic metrics
+        tx_count = len(window_txs)
+        buy_count = sum(1 for tx in window_txs if tx['txType'] == 'buy')
+        total_volume = sum(tx['solAmount'] for tx in window_txs)
+        
+        # Calculate RSI
+        price_changes = [tx['marketCapSol'] - prev_tx['marketCapSol'] 
+                        for prev_tx, tx in zip(window_txs[:-1], window_txs[1:])]
+        if price_changes:
+            gains = [change for change in price_changes if change > 0]
+            losses = [-change for change in price_changes if change < 0]
+            avg_gain = sum(gains) / len(price_changes) if gains else 0
+            avg_loss = sum(losses) / len(price_changes) if losses else 0
+            rs = avg_gain / avg_loss if avg_loss != 0 else 0
+            rsi = 100 - (100 / (1 + rs))
+        else:
+            rsi = 50
+
+        # Volatility metrics
+        prices = [tx['marketCapSol'] for tx in window_txs]
+        volumes = [tx['solAmount'] for tx in window_txs]
+        price_volatility = np.std(prices) / np.mean(prices) if prices else 0
+        volume_volatility = np.std(volumes) / np.mean(volumes) if volumes else 0
+
+        # Momentum
+        momentum = (prices[-1] - prices[0]) / prices[0] if len(prices) > 1 else 0
+
+        # Trade concentration (Gini coefficient)
+        wallets = defaultdict(float)
+        for tx in window_txs:
+            wallets[tx['wallet']] += tx['solAmount']
+        
+        if wallets:
+            values = sorted(wallets.values())
+            cumsum = np.cumsum(values)
+            n = len(values)
+            index = np.arange(1, n + 1)
+            trade_concentration = (n + 1 - 2 * np.sum(cumsum) / cumsum[-1]) / n
+        else:
+            trade_concentration = 0
+
+        return {
+            'transaction_count': tx_count,
+            'buy_pressure': buy_count / tx_count if tx_count > 0 else 0,
+            'volume': total_volume,
+            'rsi': rsi,
+            'price_volatility': price_volatility,
+            'volume_volatility': volume_volatility,
+            'momentum': momentum,
+            'trade_amount_variance': np.var(volumes) if volumes else 0,
+            'transaction_rate': tx_count / (end - start) if (end - start) > 0 else 0,
+            'trade_concentration': trade_concentration,
+            'unique_wallets': len(wallets)
+        }
+
+    def _calculate_features(self, token_data):
+        """Calculate features for model prediction"""
+        if not token_data['transactions']:
+            return None
+            
+        start_time = token_data['first_trade_time']
+        transactions = token_data['transactions']
+        
+        # Initialize features dictionary
+        features = {}
+        
+        # Calculate metrics for all timeframes
+        for window_type, intervals in self.time_windows.items():
+            for start, end in intervals:
+                window_key = f"{start}to{end}s"
+                metrics = self._calculate_timeframe_metrics(transactions, start_time, start, end)
+                for feature, value in metrics.items():
+                    features[f'{feature}_{window_key}'] = value
+        
+        # Add global features
+        features['initial_investment_ratio'] = 1.0  # Default value
+        features['initial_market_cap'] = token_data['initial_market_cap']
+        features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
+        features['buy_sell_ratio'] = features['buy_pressure_0to30s']
+        features['creation_time_numeric'] = token_data['creation_time'].hour + token_data['creation_time'].minute / 60
+        
+        # Convert to DataFrame for TokenDataset
+        df = pd.DataFrame([features])
+        dataset = TokenDataset(df, train=False)
+        
+        return dataset._preprocess_data(df, fit=False)
+
+    def _should_enter_trade(self, token_mint):
+        """Determine if we should enter a trade based on model predictions"""
+        token_data = self.active_tokens[token_mint]
+        
+        # Ensure we have 30 seconds of data
+        if len(token_data['transactions']) < 5:  # Minimum transactions threshold
+            return False
+            
+        # Calculate features
+        features = self._calculate_features(token_data)
+        if features is None:
+            return False
+
+        # Create dataset inputs
+        x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
+        x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
+        x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
+        x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
+        global_features = torch.FloatTensor(features['global']).to(self.device)
+        quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
+        
+        # Make prediction with peak_before_30 model
+        with torch.no_grad():
+            peak_before_30_pred = self.peak_before_30_model(
+                x_5s, x_10s, x_20s, x_30s,
+                global_features, quality_features
+            )
+            
+            # Convert to probability
+            prob_peaked = torch.sigmoid(peak_before_30_pred).item()
+            
+            # If probability of having peaked is low, predict final peak
+            if prob_peaked < 0.5:
+                peak_pred = self.peak_market_cap_model(
+                    x_5s, x_10s, x_20s, x_30s,
+                    global_features, quality_features
+                )
+                
+                # Convert prediction back to original scale
+                dummy_pred = np.zeros((1, 2))
+                dummy_pred[:, 0] = peak_pred.cpu().numpy()
+                transformed_pred = dataset.target_scaler.inverse_transform(dummy_pred)
+                final_pred = np.expm1(transformed_pred[0, 0])
+                
+                token_data['predicted_peak'] = final_pred
+                return True
+                
+        return False
+
+    def _execute_trade(self, token_mint, action, amount=None):
+        """Simulate executing a trade"""
+        token_data = self.active_tokens[token_mint]
+        current_price = token_data['current_market_cap']
+        
+        if action == 'buy':
+            # Simulate buying
+            token_data['entry_price'] = current_price
+            token_data['position_size'] = amount or 1.0  # Default to 1 unit if no amount specified
+            token_data['trade_status'] = 'bought'
+            
+            self.logger.info(f"BOUGHT {token_mint} at {current_price}")
+            self.positions[token_mint] = token_data
+            
+        elif action == 'sell':
+            # Calculate profit/loss
+            if token_mint in self.positions:
+                entry_price = token_data['entry_price']
+                position_size = token_data['position_size']
+                profit_loss = (current_price - entry_price) * position_size
+                
+                self.trading_metrics['total_trades'] += 1
+                if profit_loss > 0:
+                    self.trading_metrics['successful_trades'] += 1
+                self.trading_metrics['total_profit_loss'] += profit_loss
+                
+                self.logger.info(f"SOLD {token_mint} at {current_price}. P/L: {profit_loss}")
+                
+                # Record trade details
+                self.trading_metrics['positions'].append({
+                    'token': token_mint,
+                    'entry_price': entry_price,
+                    'exit_price': current_price,
+                    'profit_loss': profit_loss,
+                    'hold_time': (datetime.now() - token_data['first_trade_time']).total_seconds()
+                })
+                
+                # Clean up
+                del self.positions[token_mint]
+                token_data['trade_status'] = 'sold'
+
+    def handle_transaction(self, transaction):
+        """Handle incoming transaction data"""
+        mint = transaction['mint']
+        current_time = datetime.now()
+        
+        # Initialize token data if new
+        if mint not in self.active_tokens:
+            self.active_tokens[mint] = self._initialize_token_data(transaction)
+        
+        token_data = self.active_tokens[mint]
+        
+        # Update token data
+        if not token_data['first_trade_time']:
+            token_data['first_trade_time'] = current_time
+            token_data['initial_market_cap'] = transaction['marketCapSol']
+        
+        token_data['transactions'].append({
+            'timestamp': current_time,
+            **transaction
+        })
+        token_data['current_market_cap'] = transaction['marketCapSol']
+        
+        # Trading logic
+        if token_data['trade_status'] == 'monitoring':
+            time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
+            
+            # Check if we should make a trading decision (after 30 seconds)
+            if time_since_first >= 30 and self._should_enter_trade(mint):
+                self._execute_trade(mint, 'buy')
+                
+        elif token_data['trade_status'] == 'bought':
+            # Check if we should sell based on predicted peak
+            if token_data['current_market_cap'] >= token_data['predicted_peak']:
+                self._execute_trade(mint, 'sell')
+
+    def on_message(self, ws, message):
+        """Handle WebSocket message"""
+        try:
+            data = json.loads(message)
+            
+            if isinstance(data, dict) and data.get('message'):
+                return
+            
+            if data.get('txType') in ['buy', 'sell']:
+                transaction = {
+                    'mint': data['mint'],
+                    'txType': data['txType'],
+                    'tokenAmount': data['tokenAmount'],
+                    'solAmount': data['solAmount'],
+                    'marketCapSol': data['marketCapSol'],
+                    'wallet': data.get('wallet', 'unknown')
+                }
+                self.handle_transaction(transaction)
+        
+        except Exception as e:
+            self.logger.error(f"Error processing message: {e}")
+
+    def on_error(self, ws, error):
+        self.logger.error(f"WebSocket error: {error}")
+
+    def on_close(self, ws, close_status_code, close_msg):
+        if not self.is_connecting:
+            self.logger.warning(f"WebSocket closed: {close_status_code} - {close_msg}")
+            threading.Thread(target=self.connect, daemon=True).start()
+
+    def on_open(self, ws):
+        self.logger.info("WebSocket connected")
+        subscribe_msg = {"method": "subscribeNewToken"}
+        ws.send(json.dumps(subscribe_msg))
+
+    def connect(self):
+        """Establish WebSocket connection"""
+        if self.is_connecting:
+            return
+            
+        self.is_connecting = True
+        try:
+            websocket.enableTrace(False)
+            
+            self.ws = websocket.WebSocketApp(
+                self.config['websocket_url'],
+                on_message=self.on_message,
+                on_error=self.on_error,
+                on_close=self.on_close,
+                on_open=self.on_open
+            )
+            
+            self.ws.run_forever(
+                reconnect=5,
+                ping_interval=30,
+                ping_timeout=10
+            )
+        except Exception as e:
+            self.logger.error(f"Connection error: {e}")
+            time.sleep(5)
+            threading.Thread(target=self.connect, daemon=True).start()
+        finally:
+            self.is_connecting = False
+
+    def print_trading_metrics(self):
+        """Print current trading metrics"""
+        print("\nTrading Metrics:")
+        print(f"Total Trades: {self.trading_metrics['total_trades']}")
+        print(f"Successful Trades: {self.trading_metrics['successful_trades']}")
+        win_rate = (self.trading_metrics['successful_trades'] / self.trading_metrics['total_trades'] * 100) \
+                   if self.trading_metrics['total_trades'] > 0 else 0
+        print(f"Win Rate: {win_rate:.2f}%")
+        print(f"Total P/L: {self.trading_metrics['total_profit_loss']:.4f}")
+        
+        # Print recent positions
+        print("\nRecent Positions:")
+        for pos in self.trading_metrics['positions'][-5:]:  # Show last 5 trades
+            print(f"Token: {pos['token']}")
+            print(f"Entry: {pos['entry_price']:.4f}")
+            print(f"Exit: {pos['exit_price']:.4f}")
+            print(f"P/L: {pos['profit_loss']:.4f}")
+            print(f"Hold Time: {pos['hold_time']:.2f}s")
+            print("---")
+
+    def _initialize_token_data(self, token_data):
+        """Initialize data structure for tracking a new token"""
+        return {
+            'details': token_data,
+            'creation_time': datetime.now(),
+            'first_trade_time': None,
+            'transactions': [],
+            'metrics': defaultdict(lambda: {
+                'transaction_count': 0,
+                'buy_count': 0,
+                'volume': 0,
+                'prices': [],
+                'volumes': [],
+                'trade_amounts': [],
+                'unique_wallets': set()
+            }),
+            'current_market_cap': None,
+            'initial_market_cap': None,
+            'peak_market_cap': 0,
+            'predicted_peak': None,
+            'entry_price': None,
+            'position_size': 0,
+            'trade_status': 'monitoring'  # monitoring, bought, sold
+        }
+
+    def _calculate_quality_features(self, features):
+        """Calculate data quality features"""
+        # Basic completeness ratio
+        completeness = np.mean([
+            1 if features['data'][window_type].any() else 0
+            for window_type in ['5s', '10s', '20s', '30s']
+        ])
+        
+        # Active intervals calculation
+        active_intervals = sum(
+            features['data'][window_type].any()
+            for window_type in ['5s', '10s', '20s', '30s']
+        ) / 4.0
+        
+        return np.array([[completeness, active_intervals]])
+
+
+def main():
+    """Main function to run the trading simulator"""
+    config = {
+        'websocket_url': 'wss://pumpportal.fun/api/data',
+    }
+    
+    # Model paths
+    peak_before_30_model_path = 'models/best_hit_peak_before_30_model.pth'
+    peak_market_cap_model_path = 'models/best_peak_market_cap_model.pth'
+
+    try:
+        simulator = TradingSimulator(
+            config,
+            peak_before_30_model_path,
+            peak_market_cap_model_path
+        )
+        
+        # Start trading simulation
+        simulator.connect()
+        
+        # Print metrics every 5 minutes
+        while True:
+            time.sleep(300)
+            simulator.print_trading_metrics()
+            
+    except KeyboardInterrupt:
+        print("\nTrading simulation stopped by user.")
+        simulator.print_trading_metrics()
+    except Exception as e:
+        print(f"Critical error in trading simulation: {e}")
+
+if __name__ == "__main__":
+    main()
