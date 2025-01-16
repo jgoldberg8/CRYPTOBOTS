@@ -28,9 +28,12 @@ class TradingSimulator:
         
         # Load ML models
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.peak_before_30_model = self._load_peak_before_30_model(peak_before_30_model_path)
-        self.peak_market_cap_model = self._load_peak_market_cap_model(peak_market_cap_model_path)
+        self.global_scaler = None
+        self.target_scaler = None
         
+        # Load models and scalers
+        self.peak_before_30_model, self.global_scaler = self._load_peak_before_30_model(peak_before_30_model_path)
+        self.peak_market_cap_model, self.target_scaler = self._load_peak_market_cap_model(peak_market_cap_model_path)
         # Trading state management
         self.active_tokens = {}  # Tokens we're currently tracking
         self.positions = {}      # Tokens we've bought and are holding
@@ -51,18 +54,26 @@ class TradingSimulator:
             'positions': []
         }
 
-    def _load_peak_before_30_model(self, model_path):
-        """Load the peak before 30 prediction model"""
-        checkpoint = torch.load(model_path, map_location=self.device)
-        model = HitPeakBefore30Predictor(
-            input_size=11,
-            hidden_size=256,
-            num_layers=3,
-            dropout_rate=0.5
-        ).to(self.device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        return model
+    def _load_peak_market_cap_model(self, model_path):
+      """Load the peak market cap prediction model"""
+      checkpoint = torch.load(model_path, map_location=self.device)
+      
+      # Initialize model
+      model = PeakMarketCapPredictor(
+          input_size=11,
+          hidden_size=1024,
+          num_layers=4,
+          dropout_rate=0.4
+      ).to(self.device)
+      
+      model.load_state_dict(checkpoint['model_state_dict'])
+      model.eval()
+      
+      # Get scalers from checkpoint
+      global_scaler = checkpoint.get('global_scaler')
+      target_scaler = checkpoint.get('target_scaler')
+      
+      return model, global_scaler, target_scaler
 
     def _load_peak_market_cap_model(self, model_path):
         """Load the peak market cap prediction model"""
@@ -184,14 +195,13 @@ class TradingSimulator:
       features['initial_market_cap'] = token_data['initial_market_cap']
       features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
       features['buy_sell_ratio'] = features['buy_pressure_0to30s']
-      # Remove creation_time_numeric from features dictionary
       
       # Convert to DataFrame for TokenDataset
       df = pd.DataFrame([features])
-      # Add creation_time here after creating DataFrame
       df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
       
-      dataset = TokenDataset(df, train=False)
+      # Create dataset with our stored scalers
+      dataset = TokenDataset(df, scaler={'global': self.global_scaler, 'target': self.target_scaler}, train=False)
       
       return dataset._preprocess_data(df, fit=False)
     def _should_enter_trade(self, token_mint):
