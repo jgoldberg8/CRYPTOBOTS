@@ -249,8 +249,8 @@ class TradingSimulator:
                   for feature, value in metrics.items():
                       features[f'{feature}_{window_key}'] = value
           
-          # Create DataFrame
-          df = pd.DataFrame([features])
+          # Create DataFrame with explicit index
+          df = pd.DataFrame([features], index=[0])  # Added index=[0]
           
           # Convert creation_time to numeric format
           creation_time = token_data['creation_time']
@@ -279,13 +279,15 @@ class TradingSimulator:
               'momentum': features['momentum_0to30s']
           }
           
-          # Add peak_market_cap column for market cap predictions
+          # Create Series for global features with index
           if 'predicted_peak' in token_data:
+              global_features_df = pd.DataFrame([market_cap_global_features], index=[0])
               df['peak_market_cap'] = token_data['current_market_cap']
-              df.update(market_cap_global_features)
+              df = pd.concat([df, global_features_df], axis=1)
           else:
-              df.update(before30_global_features)
-          
+              global_features_df = pd.DataFrame([before30_global_features], index=[0])
+              df = pd.concat([df, global_features_df], axis=1)
+
           # Create dataset with correct scalers based on context
           is_peak_pred = 'predicted_peak' in token_data
           
@@ -302,7 +304,7 @@ class TradingSimulator:
           processed_data = dataset._preprocess_data(df, fit=False)
           if processed_data is None:
               return None
-          
+              
           # Store the appropriate global features in the processed data
           processed_data['global'] = (
               np.array(list(market_cap_global_features.values())) if is_peak_pred 
@@ -317,13 +319,6 @@ class TradingSimulator:
                       self.logger.error(f"Failed to reshape {window_type} features")
                       return None
                   processed_data['data'][window_type] = reshaped
-          
-          # Debug log the shapes
-          self.logger.debug("Feature shapes after processing:")
-          for window_type in ['5s', '10s', '20s', '30s']:
-              if window_type in processed_data['data']:
-                  self.logger.debug(f"{window_type}: {processed_data['data'][window_type].shape}")
-          self.logger.debug(f"Global features: {processed_data['global'].shape}")
           
           return processed_data
           
