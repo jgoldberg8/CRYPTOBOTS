@@ -249,8 +249,14 @@ class TradingSimulator:
                   for feature, value in metrics.items():
                       features[f'{feature}_{window_key}'] = value
           
-          # Create DataFrame with explicit index
-          df = pd.DataFrame([features], index=[0])  # Added index=[0]
+          # Create DataFrame with features
+          df = pd.DataFrame([features])
+          
+          # Add global features
+          df['initial_investment_ratio'] = token_data['initial_investment_ratio']
+          df['initial_market_cap'] = token_data['initial_market_cap']
+          df['buy_sell_ratio'] = token_data['buy_sell_ratio']
+          df['volume_pressure'] = token_data['volume_pressure']
           
           # Convert creation_time to numeric format
           creation_time = token_data['creation_time']
@@ -259,38 +265,34 @@ class TradingSimulator:
           df['creation_time'] = creation_time.strftime("%Y-%m-%d %H:%M:%S")
           df['creation_time_numeric'] = creation_time.timestamp()
           
-          # Prepare global features for Before30 model
-          before30_global_features = {
-              'initial_investment_ratio': 1.0,
-              'initial_market_cap': token_data['initial_market_cap'],
-              'volume_pressure': features['volume_0to30s'] / (token_data['initial_market_cap'] + 1),
-              'buy_sell_ratio': features['buy_pressure_0to30s'],
-              'price_volatility': features['price_volatility_0to30s'],
-              'volume_volatility': features['volume_volatility_0to30s'],
-              'momentum': features['momentum_0to30s']
-          }
-          
-          # Prepare global features for Market Cap model
-          market_cap_global_features = {
-              'initial_market_cap': token_data['initial_market_cap'],
-              'volume_pressure': features['volume_0to30s'] / (token_data['initial_market_cap'] + 1),
-              'buy_sell_ratio': features['buy_pressure_0to30s'],
-              'price_volatility': features['price_volatility_0to30s'],
-              'momentum': features['momentum_0to30s']
-          }
-          
-          # Create Series for global features with index
-          if 'predicted_peak' in token_data:
-              global_features_df = pd.DataFrame([market_cap_global_features], index=[0])
-              df['peak_market_cap'] = token_data['current_market_cap']
-              df = pd.concat([df, global_features_df], axis=1)
-          else:
-              global_features_df = pd.DataFrame([before30_global_features], index=[0])
-              df = pd.concat([df, global_features_df], axis=1)
-
-          # Create dataset with correct scalers based on context
+          # Create correct global feature sets based on context
           is_peak_pred = 'predicted_peak' in token_data
           
+          if is_peak_pred:
+              # Global features for Market Cap model
+              market_cap_global_features = pd.DataFrame([{
+                  'initial_market_cap': token_data['initial_market_cap'],
+                  'volume_pressure': token_data['volume_pressure'],
+                  'buy_sell_ratio': token_data['buy_sell_ratio'],
+                  'price_volatility': features['price_volatility_0to30s'],
+                  'momentum': features['momentum_0to30s']
+              }])
+              df = pd.concat([df, market_cap_global_features], axis=1)
+              df['peak_market_cap'] = token_data['current_market_cap']
+          else:
+              # Global features for Before30 model
+              before30_global_features = pd.DataFrame([{
+                  'initial_investment_ratio': token_data['initial_investment_ratio'],
+                  'initial_market_cap': token_data['initial_market_cap'],
+                  'volume_pressure': token_data['volume_pressure'],
+                  'buy_sell_ratio': token_data['buy_sell_ratio'],
+                  'price_volatility': features['price_volatility_0to30s'],
+                  'volume_volatility': features['volume_volatility_0to30s'],
+                  'momentum': features['momentum_0to30s']
+              }])
+              df = pd.concat([df, before30_global_features], axis=1)
+
+          # Create dataset with correct scalers
           dataset = TokenDataset(
               df,
               scaler={
@@ -304,14 +306,14 @@ class TradingSimulator:
           processed_data = dataset._preprocess_data(df, fit=False)
           if processed_data is None:
               return None
-              
-          # Store the appropriate global features in the processed data
+          
+          # Store the appropriate global features
           processed_data['global'] = (
-              np.array(list(market_cap_global_features.values())) if is_peak_pred 
-              else np.array(list(before30_global_features.values()))
+              np.array(list(market_cap_global_features.iloc[0])) if is_peak_pred 
+              else np.array(list(before30_global_features.iloc[0]))
           )
-              
-          # Reshape the features for each time window
+          
+          # Reshape features for each time window
           for window_type in ['5s', '10s', '20s', '30s']:
               if window_type in processed_data['data']:
                   reshaped = self._reshape_features(processed_data['data'][window_type])
@@ -323,7 +325,7 @@ class TradingSimulator:
           return processed_data
           
       except Exception as e:
-          self.logger.error(f"Error in feature calculation: {e}")
+          self.logger.error(f"Error in feature calculation: {str(e)}")
           return None
 
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
