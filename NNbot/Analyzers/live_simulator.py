@@ -241,46 +241,121 @@ class TradingSimulator:
                 
         return False
 
+    def _write_trade_to_file(self, trade_data):
+      """Write trade details to the PnL file"""
+      timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      filename = "trading_pnl.csv"
+      
+      # Create headers if file doesn't exist
+      if not os.path.exists(filename):
+          headers = [
+              "timestamp", "token", "action", "entry_price", "exit_price",
+              "position_size", "profit_loss", "hold_time", "predicted_peak",
+              "running_total_pnl", "win_rate"
+          ]
+          with open(filename, 'w') as f:
+              f.write(','.join(headers) + '\n')
+      
+      # Calculate running metrics
+      win_rate = (self.trading_metrics['successful_trades'] / self.trading_metrics['total_trades'] * 100) \
+                if self.trading_metrics['total_trades'] > 0 else 0
+                
+      # Write trade data
+      with open(filename, 'a') as f:
+          row = [
+              timestamp,
+              trade_data['token'],
+              trade_data['action'],
+              f"{trade_data.get('entry_price', '')}",
+              f"{trade_data.get('exit_price', '')}",
+              f"{trade_data.get('position_size', '')}",
+              f"{trade_data.get('profit_loss', '')}",
+              f"{trade_data.get('hold_time', '')}",
+              f"{trade_data.get('predicted_peak', '')}",
+              f"{self.trading_metrics['total_profit_loss']}",
+              f"{win_rate:.2f}"
+          ]
+          f.write(','.join(map(str, row)) + '\n')
+
     def _execute_trade(self, token_mint, action, amount=None):
-        """Simulate executing a trade"""
-        token_data = self.active_tokens[token_mint]
-        current_price = token_data['current_market_cap']
-        
-        if action == 'buy':
-            # Simulate buying
-            token_data['entry_price'] = current_price
-            token_data['position_size'] = amount or 1.0  # Default to 1 unit if no amount specified
-            token_data['trade_status'] = 'bought'
-            
-            self.logger.info(f"BOUGHT {token_mint} at {current_price}")
-            self.positions[token_mint] = token_data
-            
-        elif action == 'sell':
-            # Calculate profit/loss
-            if token_mint in self.positions:
-                entry_price = token_data['entry_price']
-                position_size = token_data['position_size']
-                profit_loss = (current_price - entry_price) * position_size
-                
-                self.trading_metrics['total_trades'] += 1
-                if profit_loss > 0:
-                    self.trading_metrics['successful_trades'] += 1
-                self.trading_metrics['total_profit_loss'] += profit_loss
-                
-                self.logger.info(f"SOLD {token_mint} at {current_price}. P/L: {profit_loss}")
-                
-                # Record trade details
-                self.trading_metrics['positions'].append({
-                    'token': token_mint,
-                    'entry_price': entry_price,
-                    'exit_price': current_price,
-                    'profit_loss': profit_loss,
-                    'hold_time': (datetime.now() - token_data['first_trade_time']).total_seconds()
-                })
-                
-                # Clean up
-                del self.positions[token_mint]
-                token_data['trade_status'] = 'sold'
+      """Simulate executing a trade"""
+      token_data = self.active_tokens[token_mint]
+      current_price = token_data['current_market_cap']
+      
+      if action == 'buy':
+          # Simulate buying
+          token_data['entry_price'] = current_price
+          token_data['position_size'] = amount or 1.0  # Default to 1 unit if no amount specified
+          token_data['trade_status'] = 'bought'
+          
+          trade_data = {
+              'token': token_mint,
+              'action': 'buy',
+              'entry_price': current_price,
+              'position_size': token_data['position_size'],
+              'predicted_peak': token_data['predicted_peak']
+          }
+          
+          # Print to console
+          print(f"\n{'='*50}")
+          print(f"NEW TRADE - BUY")
+          print(f"Token: {token_mint}")
+          print(f"Entry Price: {current_price:.4f}")
+          print(f"Predicted Peak: {token_data['predicted_peak']:.4f}")
+          print(f"{'='*50}\n")
+          
+          self._write_trade_to_file(trade_data)
+          self.positions[token_mint] = token_data
+          
+      elif action == 'sell':
+          # Calculate profit/loss
+          if token_mint in self.positions:
+              entry_price = token_data['entry_price']
+              position_size = token_data['position_size']
+              profit_loss = (current_price - entry_price) * position_size
+              hold_time = (datetime.now() - token_data['first_trade_time']).total_seconds()
+              
+              self.trading_metrics['total_trades'] += 1
+              if profit_loss > 0:
+                  self.trading_metrics['successful_trades'] += 1
+              self.trading_metrics['total_profit_loss'] += profit_loss
+              
+              trade_data = {
+                  'token': token_mint,
+                  'action': 'sell',
+                  'entry_price': entry_price,
+                  'exit_price': current_price,
+                  'position_size': position_size,
+                  'profit_loss': profit_loss,
+                  'hold_time': hold_time,
+                  'predicted_peak': token_data['predicted_peak']
+              }
+              
+              # Print to console
+              print(f"\n{'='*50}")
+              print(f"TRADE CLOSED - SELL")
+              print(f"Token: {token_mint}")
+              print(f"Entry: {entry_price:.4f}")
+              print(f"Exit: {current_price:.4f}")
+              print(f"P/L: {profit_loss:.4f}")
+              print(f"Hold Time: {hold_time:.2f}s")
+              print(f"Running Total P/L: {self.trading_metrics['total_profit_loss']:.4f}")
+              print(f"{'='*50}\n")
+              
+              self._write_trade_to_file(trade_data)
+              
+              # Record trade details
+              self.trading_metrics['positions'].append({
+                  'token': token_mint,
+                  'entry_price': entry_price,
+                  'exit_price': current_price,
+                  'profit_loss': profit_loss,
+                  'hold_time': hold_time
+              })
+              
+              # Clean up
+              del self.positions[token_mint]
+              token_data['trade_status'] = 'sold'
 
     def handle_transaction(self, transaction):
         """Handle incoming transaction data"""
