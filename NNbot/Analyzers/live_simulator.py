@@ -450,8 +450,8 @@ def main():
     }
     
     # Model paths
-    peak_before_30_model_path = 'models/best_hit_peak_before_30_model.pth'
-    peak_market_cap_model_path = 'models/best_peak_market_cap_model.pth'
+    peak_before_30_model_path = 'best_hit_peak_before_30_model.pth'
+    peak_market_cap_model_path = 'best_peak_market_cap_model.pth'
 
     try:
         simulator = TradingSimulator(
