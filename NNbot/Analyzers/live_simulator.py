@@ -281,7 +281,28 @@ class TradingSimulator:
               train=False
           )
           
-          return dataset._preprocess_data(df, fit=False)
+          # Get preprocessed data
+          processed_data = dataset._preprocess_data(df, fit=False)
+          if processed_data is None:
+              return None
+              
+          # Reshape the features for each time window
+          for window_type in ['5s', '10s', '20s', '30s']:
+              if window_type in processed_data['data']:
+                  reshaped = self._reshape_features(processed_data['data'][window_type])
+                  if reshaped is None:
+                      self.logger.error(f"Failed to reshape {window_type} features")
+                      return None
+                  processed_data['data'][window_type] = reshaped
+          
+          # Debug log the shapes
+          self.logger.debug("Feature shapes after processing:")
+          for window_type in ['5s', '10s', '20s', '30s']:
+              if window_type in processed_data['data']:
+                  self.logger.debug(f"{window_type}: {processed_data['data'][window_type].shape}")
+          self.logger.debug(f"Global features: {processed_data['global'].shape}")
+          
+          return processed_data
           
       except Exception as e:
           self.logger.error(f"Error in feature calculation: {e}")
@@ -387,7 +408,49 @@ class TradingSimulator:
           return np.expm1(transformed_pred[0, 0])
       except Exception as e:
           self.logger.error(f"Error scaling prediction: {e}")
-          return None     
+          return None
+
+
+
+    def _reshape_features(self, features_array, expected_dim=11):
+      """Helper method to ensure correct feature shape"""
+      try:
+          # Convert to numpy if tensor
+          if torch.is_tensor(features_array):
+              features_array = features_array.cpu().numpy()
+              
+          # Ensure we're working with numpy array
+          features_array = np.array(features_array)
+          
+          # Reshape based on data structure
+          if len(features_array.shape) == 3:
+              if features_array.shape[-1] == expected_dim:
+                  return features_array
+              else:
+                  self.logger.error(f"Feature dimension mismatch: expected {expected_dim}, got {features_array.shape[-1]}")
+                  return None
+          elif len(features_array.shape) == 2:
+              # For 2D array, we need to add batch dimension
+              if features_array.shape[-1] == expected_dim:
+                  return features_array.reshape(1, -1, expected_dim)
+              elif features_array.shape[0] == expected_dim:
+                  return features_array.reshape(1, -1, expected_dim)
+              else:
+                  self.logger.error(f"Cannot determine correct reshaping for shape {features_array.shape}")
+                  return None
+          else:
+              # Try to infer correct shape
+              total_elements = features_array.size
+              if total_elements % expected_dim == 0:
+                  seq_len = total_elements // expected_dim
+                  return features_array.reshape(1, seq_len, expected_dim)
+              else:
+                  self.logger.error(f"Cannot reshape features of size {features_array.shape} to match expected dimensions")
+                  return None
+                  
+      except Exception as e:
+          self.logger.error(f"Error reshaping features: {e}")
+          return None  
 
     def _should_enter_trade(self, token_mint):
       """Determine if we should enter a trade based on model predictions"""
@@ -404,18 +467,28 @@ class TradingSimulator:
               self.logger.warning(f"Could not calculate features for {token_mint}")
               return False
 
-          # Prepare model inputs
-          x_5s = torch.FloatTensor(features['data']['5s']).unsqueeze(0).to(self.device)
-          x_10s = torch.FloatTensor(features['data']['10s']).unsqueeze(0).to(self.device)
-          x_20s = torch.FloatTensor(features['data']['20s']).unsqueeze(0).to(self.device)
-          x_30s = torch.FloatTensor(features['data']['30s']).unsqueeze(0).to(self.device)
-          global_features = torch.FloatTensor(features['global']).unsqueeze(0).to(self.device)
+          # Prepare model inputs - reshape to correct dimensions
+          # Should be [batch_size, sequence_length, features]
+          x_5s = torch.FloatTensor(features['data']['5s']).reshape(1, -1, 11).to(self.device)
+          x_10s = torch.FloatTensor(features['data']['10s']).reshape(1, -1, 11).to(self.device)
+          x_20s = torch.FloatTensor(features['data']['20s']).reshape(1, -1, 11).to(self.device)
+          x_30s = torch.FloatTensor(features['data']['30s']).reshape(1, -1, 11).to(self.device)
+          global_features = torch.FloatTensor(features['global']).reshape(1, -1).to(self.device)
           quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
-          
+
           # Make predictions with error handling
           with torch.no_grad():
               self.logger.info(f"\n{'='*50}")
               self.logger.info(f"PREDICTION - Token: {token_mint}")
+              
+              # Print tensor shapes for debugging
+              self.logger.debug(f"Input shapes:")
+              self.logger.debug(f"x_5s: {x_5s.shape}")
+              self.logger.debug(f"x_10s: {x_10s.shape}")
+              self.logger.debug(f"x_20s: {x_20s.shape}")
+              self.logger.debug(f"x_30s: {x_30s.shape}")
+              self.logger.debug(f"global_features: {global_features.shape}")
+              self.logger.debug(f"quality_features: {quality_features.shape}")
               
               try:
                   peak_before_30_pred = self.peak_before_30_model(
@@ -437,6 +510,10 @@ class TradingSimulator:
                       
                       current_mcap = token_data['current_market_cap']
                       final_pred = self._scale_prediction(peak_pred, current_mcap)
+                      
+                      if final_pred is None:
+                          return False
+                          
                       potential_upside = ((final_pred/current_mcap - 1) * 100)
                       
                       self.logger.info(f"Current Market Cap: {current_mcap:.4f}")
