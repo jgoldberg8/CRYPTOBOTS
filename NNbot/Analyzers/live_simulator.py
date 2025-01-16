@@ -73,13 +73,15 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Ensure global_scaler is correctly retrieved
-      global_scaler = checkpoint.get('global_scaler')
+      # Try to get the global scaler - add more flexible retrieval
+      global_scaler = (
+          checkpoint.get('global_scaler') or 
+          checkpoint.get('scaler') or 
+          checkpoint.get('train_dataset_global_scaler')
+      )
       
-      # If global_scaler is not in the checkpoint, raise an error
       if global_scaler is None:
-          raise ValueError("Global scaler not found in the model checkpoint. "
-                          "Ensure the scaler was saved during model training.")
+          raise ValueError(f"Could not find global scaler in checkpoint. Available keys: {checkpoint.keys()}")
       
       return {
           'model': model,
@@ -101,18 +103,24 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Ensure scalers are correctly retrieved
-      global_scaler = checkpoint.get('global_scaler')
-      target_scaler = checkpoint.get('target_scaler')
+      # Try to get scalers - add more flexible retrieval
+      global_scaler = (
+          checkpoint.get('global_scaler') or 
+          checkpoint.get('scaler') or 
+          checkpoint.get('train_dataset_global_scaler')
+      )
       
-      # If either scaler is missing, raise an error
+      target_scaler = (
+          checkpoint.get('target_scaler') or 
+          checkpoint.get('target_scaler') or 
+          checkpoint.get('train_dataset_target_scaler')
+      )
+      
       if global_scaler is None:
-          raise ValueError("Global scaler not found in the model checkpoint. "
-                          "Ensure the scaler was saved during model training.")
+          raise ValueError(f"Could not find global scaler in checkpoint. Available keys: {checkpoint.keys()}")
       
       if target_scaler is None:
-          raise ValueError("Target scaler not found in the model checkpoint. "
-                          "Ensure the scaler was saved during model training.")
+          raise ValueError(f"Could not find target scaler in checkpoint. Available keys: {checkpoint.keys()}")
       
       return {
           'model': model,
