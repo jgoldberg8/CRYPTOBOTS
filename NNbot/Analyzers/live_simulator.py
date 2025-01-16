@@ -73,8 +73,13 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Get scaler from checkpoint
+      # Ensure global_scaler is correctly retrieved
       global_scaler = checkpoint.get('global_scaler')
+      
+      # If global_scaler is not in the checkpoint, raise an error
+      if global_scaler is None:
+          raise ValueError("Global scaler not found in the model checkpoint. "
+                          "Ensure the scaler was saved during model training.")
       
       return {
           'model': model,
@@ -96,9 +101,18 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Get scalers from checkpoint
+      # Ensure scalers are correctly retrieved
       global_scaler = checkpoint.get('global_scaler')
       target_scaler = checkpoint.get('target_scaler')
+      
+      # If either scaler is missing, raise an error
+      if global_scaler is None:
+          raise ValueError("Global scaler not found in the model checkpoint. "
+                          "Ensure the scaler was saved during model training.")
+      
+      if target_scaler is None:
+          raise ValueError("Target scaler not found in the model checkpoint. "
+                          "Ensure the scaler was saved during model training.")
       
       return {
           'model': model,
