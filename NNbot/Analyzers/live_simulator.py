@@ -329,6 +329,33 @@ class TradingSimulator:
       except Exception as e:
           self.logger.error(f"Error in feature calculation: {str(e)}")
           return None
+
+    def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
+        """Calculate metrics for a specific timeframe"""
+        default_metrics = {
+            'transaction_count': 0,
+            'buy_pressure': 0,
+            'volume': 0,
+            'rsi': 50,
+            'price_volatility': 0,
+            'volume_volatility': 0,
+            'momentum': 0,
+            'trade_amount_variance': 0,
+            'transaction_rate': 0,
+            'trade_concentration': 0,
+            'unique_wallets': 0
+        }
+
+        try:
+            interval_start = start_time + timedelta(seconds=start)
+            interval_end = start_time + timedelta(seconds=end)
+            
+            window_txs = [tx for tx in transactions 
+                         if interval_start <= tx['timestamp'] <= interval_end]
+
+            if not window_txs:
+                return default_metrics
+
             # Calculate metrics
             tx_count = len(window_txs)
             buy_count = sum(1 for tx in window_txs if tx['txType'] == 'buy')
