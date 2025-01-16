@@ -450,12 +450,12 @@ class TradingSimulator:
       """Handle new token creation event"""
       try:
           mint = creation_data['mint']
-          print(f"Initializing new token: {mint}")  # Debug log
+          # print(f"Initializing new token: {mint}")  # Debug log
           
           token_entry = self._initialize_token_data(creation_data)
           self.active_tokens[mint] = token_entry
           
-          print(f"Successfully initialized token {mint}")  # Debug log
+          # print(f"Successfully initialized token {mint}")  # Debug log
           
           # Subscribe to token trades
           if self.ws and self.ws.sock and self.ws.sock.connected:
@@ -465,7 +465,7 @@ class TradingSimulator:
                   "keys": [mint]
               }
               self.ws.send(json.dumps(sub_message))
-              print(f"Subscribed to trades for {mint}")  # Debug log
+              # print(f"Subscribed to trades for {mint}")  # Debug log
 
       except Exception as e:
           print(f"Error in handle_token_creation: {str(e)}")  # Debug log
@@ -479,7 +479,7 @@ class TradingSimulator:
           if isinstance(data, dict) and data.get('message'):
               return
           
-          print(f"Received message type: {data.get('txType')}")  # Debug log
+          # print(f"Received message type: {data.get('txType')}")  # Debug log
           
           if data.get('txType') == 'create':
               print(f"New token created: {data['mint']}")
@@ -572,7 +572,7 @@ class TradingSimulator:
 
     def on_ping(self, ws, message):
       """Handle ping messages"""
-      print("Received ping")
+      # print("Received ping")
       try:
           ws.pong(message)
       except Exception as e:
