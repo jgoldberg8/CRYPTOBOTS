@@ -22,47 +22,65 @@ class ScalerManager:
         os.makedirs(scaler_dir, exist_ok=True)
         self.logger = logging.getLogger(__name__)
         
-    def save_scalers(self, global_scaler=None, target_scaler=None):
-        """Save both scalers to files"""
+    def save_scalers(self, model_type, global_scaler=None, target_scaler=None):
+        """Save scalers based on model type"""
         try:
-            if global_scaler:
-                global_path = os.path.join(self.scaler_dir, 'hit_peak_global_scaler.joblib')
-                joblib.dump(global_scaler, global_path)
-                self.logger.info(f"Global scaler saved to {global_path}")
-                
-            if target_scaler:
-                target_path = os.path.join(self.scaler_dir, 'hit_peak_target_scaler.joblib')
-                joblib.dump(target_scaler, target_path)
-                self.logger.info(f"Target scaler saved to {target_path}")
-                
+            if model_type == 'before30':
+                if global_scaler:
+                    global_path = os.path.join(self.scaler_dir, 'hit_peak_global_scaler.joblib')
+                    joblib.dump(global_scaler, global_path)
+                    self.logger.info(f"Before30 global scaler saved to {global_path}")
+            
+            elif model_type == 'market_cap':
+                if global_scaler:
+                    global_path = os.path.join(self.scaler_dir, 'global_scaler.joblib')
+                    joblib.dump(global_scaler, global_path)
+                    self.logger.info(f"Market cap global scaler saved to {global_path}")
+                    
+                if target_scaler:
+                    target_path = os.path.join(self.scaler_dir, 'target_scaler.joblib')
+                    joblib.dump(target_scaler, target_path)
+                    self.logger.info(f"Market cap target scaler saved to {target_path}")
+                    
         except Exception as e:
             self.logger.error(f"Error saving scalers: {e}")
             raise
             
-    def load_scalers(self):
-        """Load both scalers from files"""
+    def load_scalers(self, model_type):
+        """Load scalers based on model type"""
         global_scaler = None
         target_scaler = None
         
         try:
-            global_path = os.path.join(self.scaler_dir, 'hit_peak_global_scaler.joblib')
-            if os.path.exists(global_path):
-                global_scaler = joblib.load(global_path)
-                self.logger.info("Global scaler loaded successfully")
-            else:
-                self.logger.warning(f"Global scaler not found at {global_path}")
+            if model_type == 'before30':
+                global_path = os.path.join(self.scaler_dir, 'hit_peak_global_scaler.joblib')
+                if os.path.exists(global_path):
+                    global_scaler = joblib.load(global_path)
+                    self.logger.info("Before30 global scaler loaded successfully")
+                else:
+                    self.logger.warning(f"Before30 global scaler not found at {global_path}")
+                    
+            elif model_type == 'market_cap':
+                global_path = os.path.join(self.scaler_dir, 'global_scaler.joblib')
+                target_path = os.path.join(self.scaler_dir, 'target_scaler.joblib')
                 
-            target_path = os.path.join(self.scaler_dir, 'hit_peak_target_scaler.joblib')
-            if os.path.exists(target_path):
-                target_scaler = joblib.load(target_path)
-                self.logger.info("Target scaler loaded successfully")
-            else:
-                self.logger.warning(f"Target scaler not found at {target_path}")
-                
+                if os.path.exists(global_path):
+                    global_scaler = joblib.load(global_path)
+                    self.logger.info("Market cap global scaler loaded successfully")
+                else:
+                    self.logger.warning(f"Market cap global scaler not found at {global_path}")
+                    
+                if os.path.exists(target_path):
+                    target_scaler = joblib.load(target_path)
+                    self.logger.info("Market cap target scaler loaded successfully")
+                else:
+                    self.logger.warning(f"Market cap target scaler not found at {target_path}")
+            
         except Exception as e:
             self.logger.error(f"Error loading scalers: {e}")
             
         return global_scaler, target_scaler
+    
 
 class TradingSimulator:
     def __init__(self, config, peak_before_30_model_path, peak_market_cap_model_path):
@@ -79,12 +97,21 @@ class TradingSimulator:
         
         # Initialize scaler management
         self.scaler_manager = ScalerManager()
-        self.global_scaler, self.target_scaler = self.scaler_manager.load_scalers()
         
-        if self.global_scaler is None or self.target_scaler is None:
-            self.logger.error("Failed to load one or both scalers")
-            raise RuntimeError("Required scalers not available")
+        # Load before30 model scaler
+        self.before30_global_scaler, _ = self.scaler_manager.load_scalers('before30')
         
+        # Load market cap model scalers
+        self.market_cap_global_scaler, self.market_cap_target_scaler = self.scaler_manager.load_scalers('market_cap')
+        
+        if self.before30_global_scaler is None:
+            self.logger.error("Failed to load Before30 global scaler")
+            raise RuntimeError("Required Before30 scaler not available")
+            
+        if self.market_cap_global_scaler is None or self.market_cap_target_scaler is None:
+            self.logger.error("Failed to load Market Cap scalers")
+            raise RuntimeError("Required Market Cap scalers not available")
+            
         # Initialize WebSocket configuration
         self.config = config
         self.ws = None
@@ -94,6 +121,8 @@ class TradingSimulator:
         # Load ML models
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logger.info(f"Using device: {self.device}")
+    
+    # Rest of initialization remains the same...
         
         # Load peak_before_30 model
         try:
@@ -192,62 +221,70 @@ class TradingSimulator:
             raise
 
     def _calculate_features(self, token_data):
-        """Calculate features for model prediction with robust error handling"""
-        if not token_data['transactions']:
-            self.logger.warning("No transactions available for feature calculation")
-            return None
-            
-        try:
-            start_time = token_data['first_trade_time']
-            transactions = token_data['transactions']
-            
-            # Initialize features dictionary
-            features = {}
-            
-            # Calculate metrics for all timeframes
-            for window_type, intervals in self.time_windows.items():
-                for start, end in intervals:
-                    window_key = f"{start}to{end}s"
-                    metrics = self._calculate_timeframe_metrics(
-                        transactions, start_time, start, end
-                    )
-                    for feature, value in metrics.items():
-                        features[f'{feature}_{window_key}'] = value
-            
-            # Add global features
-            features['initial_investment_ratio'] = 1.0
-            features['initial_market_cap'] = token_data['initial_market_cap']
-            features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
-            features['buy_sell_ratio'] = features['buy_pressure_0to30s']
-            
-            # Convert to DataFrame
-            df = pd.DataFrame([features])
-            df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Verify scalers are available
-            if self.global_scaler is None or self.target_scaler is None:
-                self.logger.warning("Scalers not available, attempting reload...")
-                self.global_scaler, self.target_scaler = self.scaler_manager.load_scalers()
-                
-                if self.global_scaler is None or self.target_scaler is None:
-                    self.logger.error("Failed to load scalers")
-                    return None
-            
-            # Create dataset with scalers
-            dataset = TokenDataset(
-                df,
-                scaler={
-                    'global': self.global_scaler,
-                    'target': self.target_scaler
-                },
-                train=False
-            )
-            
-            return dataset._preprocess_data(df, fit=False)
-            
-        except Exception as e:
-            self.logger.error(f"Error in feature calculation: {e}")
-            return None
+      """Calculate features for model prediction with robust error handling"""
+      if not token_data['transactions']:
+          self.logger.warning("No transactions available for feature calculation")
+          return None
+          
+      try:
+          start_time = token_data['first_trade_time']
+          transactions = token_data['transactions']
+          
+          # Initialize features dictionary
+          features = {}
+          
+          # Calculate metrics for all timeframes
+          for window_type, intervals in self.time_windows.items():
+              for start, end in intervals:
+                  window_key = f"{start}to{end}s"
+                  metrics = self._calculate_timeframe_metrics(
+                      transactions, start_time, start, end
+                  )
+                  for feature, value in metrics.items():
+                      features[f'{feature}_{window_key}'] = value
+          
+          # Add global features
+          features['initial_investment_ratio'] = 1.0
+          features['initial_market_cap'] = token_data['initial_market_cap']
+          features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
+          features['buy_sell_ratio'] = features['buy_pressure_0to30s']
+          
+          # Convert to DataFrame
+          df = pd.DataFrame([features])
+          df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
+          
+          # Verify scalers are available and reload if needed
+          if self.before30_global_scaler is None:
+              self.logger.warning("Before30 scaler not available, attempting reload...")
+              self.before30_global_scaler, _ = self.scaler_manager.load_scalers('before30')
+              if self.before30_global_scaler is None:
+                  self.logger.error("Failed to load Before30 scaler")
+                  return None
+                  
+          if self.market_cap_global_scaler is None or self.market_cap_target_scaler is None:
+              self.logger.warning("Market cap scalers not available, attempting reload...")
+              self.market_cap_global_scaler, self.market_cap_target_scaler = self.scaler_manager.load_scalers('market_cap')
+              if self.market_cap_global_scaler is None or self.market_cap_target_scaler is None:
+                  self.logger.error("Failed to load Market Cap scalers")
+                  return None
+          
+          # Create dataset with correct scalers based on context
+          is_peak_pred = 'predicted_peak' in token_data
+          
+          dataset = TokenDataset(
+              df,
+              scaler={
+                  'global': self.market_cap_global_scaler if is_peak_pred else self.before30_global_scaler,
+                  'target': self.market_cap_target_scaler if is_peak_pred else None
+              },
+              train=False
+          )
+          
+          return dataset._preprocess_data(df, fit=False)
+          
+      except Exception as e:
+          self.logger.error(f"Error in feature calculation: {e}")
+          return None
 
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
         """Calculate metrics for a specific timeframe"""
