@@ -1,4 +1,6 @@
+import os
 import warnings
+import joblib
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import torch
@@ -339,6 +341,7 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': hit_peak_before_30_model.state_dict(),
@@ -358,6 +361,54 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
     hit_peak_before_30_model.load_state_dict(checkpoint['model_state_dict'])
     
     return hit_peak_before_30_model, best_val_loss, metrics_history    
+
+
+
+def save_hit_peak_scalers(train_dataset, output_dir='scalers'):
+    """
+    Save scalers from the Hit Peak Before 30 dataset.
+    
+    Args:
+        train_dataset (HitPeakBefore30Dataset): The training dataset containing scalers
+        output_dir (str, optional): Directory to save scalers. Defaults to 'scalers'.
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save global scaler
+    if hasattr(train_dataset, 'global_scaler'):
+        joblib.dump(train_dataset.global_scaler, 
+                    os.path.join(output_dir, 'hit_peak_global_scaler.joblib'))
+    
+    # Optionally save target scaler if it exists
+    if hasattr(train_dataset, 'target_scaler'):
+        joblib.dump(train_dataset.target_scaler, 
+                    os.path.join(output_dir, 'hit_peak_target_scaler.joblib'))
+
+def load_hit_peak_scalers(scaler_dir='scalers'):
+    """
+    Load previously saved Hit Peak Before 30 scalers.
+    
+    Args:
+        scaler_dir (str, optional): Directory where scalers are saved. Defaults to 'scalers'.
+    
+    Returns:
+        dict: A dictionary containing loaded scalers
+    """
+    scalers = {}
+    
+    # Try to load global scaler
+    global_scaler_path = os.path.join(scaler_dir, 'hit_peak_global_scaler.joblib')
+    if os.path.exists(global_scaler_path):
+        scalers['global'] = joblib.load(global_scaler_path)
+    
+    # Try to load target scaler
+    target_scaler_path = os.path.join(scaler_dir, 'hit_peak_target_scaler.joblib')
+    if os.path.exists(target_scaler_path):
+        scalers['target'] = joblib.load(target_scaler_path)
+    
+    return scalers
+
 
 
 def main_hit_peak_before_30(
@@ -394,6 +445,7 @@ def main_hit_peak_before_30(
 
     # Create datasets
     train_dataset = HitPeakBefore30Dataset(train_df)
+    save_hit_peak_scalers(train_dataset)
     val_dataset = HitPeakBefore30Dataset(val_df, scaler={
         'global': train_dataset.global_scaler
     })
