@@ -274,7 +274,7 @@ class TradingSimulator:
           is_peak_pred = 'predicted_peak' in token_data
           
           if is_peak_pred:
-              # Global features for Market Cap model with matching index
+              # Global features for Market Cap model (5 features)
               market_cap_global_features = {
                   'initial_market_cap': token_data['initial_market_cap'],
                   'volume_pressure': token_data['volume_pressure'],
@@ -287,7 +287,7 @@ class TradingSimulator:
                   df[key] = value
               df['peak_market_cap'] = token_data['current_market_cap']
           else:
-              # Global features for Before30 model with matching index
+              # Global features for Before30 model (7 features)
               before30_global_features = {
                   'initial_investment_ratio': token_data['initial_investment_ratio'],
                   'initial_market_cap': token_data['initial_market_cap'],
@@ -316,13 +316,13 @@ class TradingSimulator:
           if processed_data is None:
               return None
           
-          # Store the appropriate global features
+          # Store the appropriate global features with correct shape
           if is_peak_pred:
-              global_features_array = np.array([list(market_cap_global_features.values())])
+              global_features_array = np.array([list(market_cap_global_features.values())])  # Shape: [1, 5]
           else:
-              global_features_array = np.array([list(before30_global_features.values())])
+              global_features_array = np.array([list(before30_global_features.values())])    # Shape: [1, 7]
           
-          processed_data['global'] = global_features_array.squeeze()
+          processed_data['global'] = global_features_array
           
           # Reshape features for each time window
           for window_type in ['5s', '10s', '20s', '30s']:
@@ -505,23 +505,13 @@ class TradingSimulator:
               self.logger.debug(f"{window} shape: {features['data'][window].shape}")
 
           # Prepare model inputs with correct shapes
-          x_5s = torch.FloatTensor(features['data']['5s']).reshape(1, -1, 11).to(self.device)
-          x_10s = torch.FloatTensor(features['data']['10s']).reshape(1, -1, 11).to(self.device)
-          x_20s = torch.FloatTensor(features['data']['20s']).reshape(1, -1, 11).to(self.device)
-          x_30s = torch.FloatTensor(features['data']['30s']).reshape(1, -1, 11).to(self.device)
+          x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
+          x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
+          x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
+          x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
           
-          # Reshape global features to match expected dimensions (batch_size, feature_dim)
-          global_features = torch.FloatTensor(features['global']).reshape(1, 7).to(self.device)  # 7 is the expected global feature dimension
+          # Quality features
           quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
-
-          # Debug log the reshaped tensors
-          self.logger.debug(f"\nReshaped tensor shapes:")
-          self.logger.debug(f"x_5s: {x_5s.shape}")
-          self.logger.debug(f"x_10s: {x_10s.shape}")
-          self.logger.debug(f"x_20s: {x_20s.shape}")
-          self.logger.debug(f"x_30s: {x_30s.shape}")
-          self.logger.debug(f"global_features: {global_features.shape}")
-          self.logger.debug(f"quality_features: {quality_features.shape}")
 
           # Make predictions with error handling
           with torch.no_grad():
@@ -529,9 +519,11 @@ class TradingSimulator:
               self.logger.info(f"PREDICTION - Token: {token_mint}")
               
               try:
+                  # For Before30 model (expects 7 global features)
+                  global_features_before30 = torch.FloatTensor(features['global']).reshape(1, 7).to(self.device)
                   peak_before_30_pred = self.peak_before_30_model(
                       x_5s, x_10s, x_20s, x_30s,
-                      global_features, quality_features
+                      global_features_before30, quality_features
                   )
                   
                   # Convert to probability
@@ -540,9 +532,21 @@ class TradingSimulator:
                   
                   if prob_peaked < 0.5:
                       self.logger.info("Token hasn't peaked - Running peak_market_cap model...")
+                      
+                      # For Market Cap model (expects 5 global features)
+                      # Prepare specific global features for market cap model
+                      market_cap_features = np.array([[
+                          features['global'][0, 1],  # initial_market_cap
+                          features['global'][0, 2],  # volume_pressure
+                          features['global'][0, 3],  # buy_sell_ratio
+                          features['global'][0, 4],  # price_volatility
+                          features['global'][0, 6]   # momentum
+                      ]])
+                      global_features_market_cap = torch.FloatTensor(market_cap_features).to(self.device)
+                      
                       peak_pred = self.peak_market_cap_model(
                           x_5s, x_10s, x_20s, x_30s,
-                          global_features, quality_features
+                          global_features_market_cap, quality_features
                       )
                       
                       current_mcap = token_data['current_market_cap']
