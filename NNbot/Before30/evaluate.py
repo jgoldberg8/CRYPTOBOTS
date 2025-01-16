@@ -7,8 +7,9 @@ import torch
 from Before30.dataset.hit_peak_30_dataset import HitPeakBefore30Dataset
 from Before30.models.peak_before_30_model import HitPeakBefore30Predictor
 from Before30.utils.clean_dataset import clean_dataset
-from utils.add_data_quality_features import add_data_quality_features
 from torch.utils.data import DataLoader
+
+from utils.add_data_quality_features import add_data_quality_features
 
 
 def evaluate_hit_peak_before_30_model(hit_peak_before_30_model_path, data_paths):
