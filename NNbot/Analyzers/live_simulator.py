@@ -161,37 +161,39 @@ class TradingSimulator:
         }
 
     def _calculate_features(self, token_data):
-        """Calculate features for model prediction"""
-        if not token_data['transactions']:
-            return None
-            
-        start_time = token_data['first_trade_time']
-        transactions = token_data['transactions']
-        
-        # Initialize features dictionary
-        features = {}
-        
-        # Calculate metrics for all timeframes
-        for window_type, intervals in self.time_windows.items():
-            for start, end in intervals:
-                window_key = f"{start}to{end}s"
-                metrics = self._calculate_timeframe_metrics(transactions, start_time, start, end)
-                for feature, value in metrics.items():
-                    features[f'{feature}_{window_key}'] = value
-        
-        # Add global features
-        features['initial_investment_ratio'] = 1.0  # Default value
-        features['initial_market_cap'] = token_data['initial_market_cap']
-        features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
-        features['buy_sell_ratio'] = features['buy_pressure_0to30s']
-        features['creation_time_numeric'] = token_data['creation_time'].hour + token_data['creation_time'].minute / 60
-        
-        # Convert to DataFrame for TokenDataset
-        df = pd.DataFrame([features])
-        dataset = TokenDataset(df, train=False)
-        
-        return dataset._preprocess_data(df, fit=False)
-
+      """Calculate features for model prediction"""
+      if not token_data['transactions']:
+          return None
+          
+      start_time = token_data['first_trade_time']
+      transactions = token_data['transactions']
+      
+      # Initialize features dictionary
+      features = {}
+      
+      # Calculate metrics for all timeframes
+      for window_type, intervals in self.time_windows.items():
+          for start, end in intervals:
+              window_key = f"{start}to{end}s"
+              metrics = self._calculate_timeframe_metrics(transactions, start_time, start, end)
+              for feature, value in metrics.items():
+                  features[f'{feature}_{window_key}'] = value
+      
+      # Add global features
+      features['initial_investment_ratio'] = 1.0  # Default value
+      features['initial_market_cap'] = token_data['initial_market_cap']
+      features['volume_pressure'] = features['volume_0to30s'] / (features['initial_market_cap'] + 1)
+      features['buy_sell_ratio'] = features['buy_pressure_0to30s']
+      # Remove creation_time_numeric from features dictionary
+      
+      # Convert to DataFrame for TokenDataset
+      df = pd.DataFrame([features])
+      # Add creation_time here after creating DataFrame
+      df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
+      
+      dataset = TokenDataset(df, train=False)
+      
+      return dataset._preprocess_data(df, fit=False)
     def _should_enter_trade(self, token_mint):
       """Determine if we should enter a trade based on model predictions"""
       try:
