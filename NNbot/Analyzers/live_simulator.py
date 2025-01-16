@@ -95,18 +95,6 @@ class TradingSimulator:
       
       return model, global_scaler, target_scaler
 
-    def _load_peak_market_cap_model(self, model_path):
-        """Load the peak market cap prediction model"""
-        checkpoint = torch.load(model_path, map_location=self.device)
-        model = PeakMarketCapPredictor(
-            input_size=11,
-            hidden_size=1024,
-            num_layers=4,
-            dropout_rate=0.4
-        ).to(self.device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        return model
 
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
         """Calculate metrics for a specific timeframe"""
