@@ -568,44 +568,53 @@ class TradingSimulator:
     
 
     def handle_transaction(self, transaction):
-        """Handle incoming transaction data"""
-        try:
-            mint = transaction['mint']
-            current_time = datetime.now()
-            
-            # Initialize token data if new
-            if mint not in self.active_tokens:
-                self.active_tokens[mint] = self._initialize_token_data(transaction)
-            
-            token_data = self.active_tokens[mint]
-            
-            # Update token data
-            if not token_data['first_trade_time']:
-                token_data['first_trade_time'] = current_time
-                token_data['initial_market_cap'] = transaction['marketCapSol']
-            
-            token_data['transactions'].append({
-                'timestamp': current_time,
-                **transaction
-            })
-            token_data['current_market_cap'] = transaction['marketCapSol']
-            
-            # Trading logic
-            if token_data['trade_status'] == 'monitoring':
-                time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
-                
-                # Check if we should make a trading decision (after 30 seconds)
-                if time_since_first >= 30:
-                    if self._should_enter_trade(mint):
-                        self._execute_trade(mint, 'buy')
-                        
-            elif token_data['trade_status'] == 'bought':
-                # Check if we should sell based on predicted peak
-                if token_data['current_market_cap'] >= token_data['predicted_peak']:
-                    self._execute_trade(mint, 'sell')
-                    
-        except Exception as e:
-            self.logger.error(f"Error in handle_transaction: {e}")
+      """Handle incoming transaction data"""
+      try:
+          mint = transaction['mint']
+          current_time = datetime.now()
+          
+          # Initialize token data if new
+          if mint not in self.active_tokens:
+              self.active_tokens[mint] = self._initialize_token_data(transaction)
+          
+          token_data = self.active_tokens[mint]
+          
+          # Update token data
+          if not token_data['first_trade_time']:
+              token_data['first_trade_time'] = current_time
+              token_data['initial_market_cap'] = transaction['marketCapSol']
+          
+          token_data['transactions'].append({
+              'timestamp': current_time,
+              **transaction
+          })
+          token_data['current_market_cap'] = transaction['marketCapSol']
+          
+          # Update the buy/sell ratio
+          total_transactions = len(token_data['transactions'])
+          buy_transactions = sum(1 for tx in token_data['transactions'] if tx['txType'] == 'buy')
+          token_data['buy_sell_ratio'] = buy_transactions / total_transactions if total_transactions > 0 else 0.0
+          
+          # Update volume pressure
+          total_volume = sum(tx['solAmount'] for tx in token_data['transactions'])
+          token_data['volume_pressure'] = total_volume / (token_data['initial_market_cap'] + 1e-8)
+          
+          # Trading logic
+          if token_data['trade_status'] == 'monitoring':
+              time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
+              
+              # Check if we should make a trading decision (after 30 seconds)
+              if time_since_first >= 30:
+                  if self._should_enter_trade(mint):
+                      self._execute_trade(mint, 'buy')
+                      
+          elif token_data['trade_status'] == 'bought':
+              # Check if we should sell based on predicted peak
+              if token_data['current_market_cap'] >= token_data['predicted_peak']:
+                  self._execute_trade(mint, 'sell')
+                  
+      except Exception as e:
+          self.logger.error(f"Error in handle_transaction: {e}")
 
     def _write_trade_to_file(self, trade_data):
         """Write trade details to the PnL file with error handling"""
@@ -731,29 +740,33 @@ class TradingSimulator:
             self.logger.error(f"Error executing trade: {e}")
 
     def _initialize_token_data(self, token_data):
-        """Initialize data structure for tracking a new token"""
-        return {
-            'details': token_data,
-            'creation_time': datetime.now(),
-            'first_trade_time': None,
-            'transactions': [],
-            'metrics': defaultdict(lambda: {
-                'transaction_count': 0,
-                'buy_count': 0,
-                'volume': 0,
-                'prices': [],
-                'volumes': [],
-                'trade_amounts': [],
-                'unique_wallets': set()
-            }),
-            'current_market_cap': None,
-            'initial_market_cap': None,
-            'peak_market_cap': 0,
-            'predicted_peak': None,
-            'entry_price': None,
-            'position_size': 0,
-            'trade_status': 'monitoring'
-        }
+      """Initialize data structure for tracking a new token"""
+      return {
+          'details': token_data,
+          'creation_time': datetime.now(),
+          'first_trade_time': None,
+          'transactions': [],
+          'metrics': defaultdict(lambda: {
+              'transaction_count': 0,
+              'buy_count': 0,
+              'volume': 0,
+              'prices': [],
+              'volumes': [],
+              'trade_amounts': [],
+              'unique_wallets': set()
+          }),
+          'current_market_cap': None,
+          'initial_market_cap': None,
+          'peak_market_cap': 0,
+          'predicted_peak': None,
+          'entry_price': None,
+          'position_size': 0,
+          'trade_status': 'monitoring',
+          # Add the missing fields
+          'initial_investment_ratio': 1.0,  # Default value as seen in hit_peak_30_dataset.py
+          'buy_sell_ratio': 0.0,  # Will be updated in handle_transaction
+          'volume_pressure': 0.0  # Will be calculated as volume/initial_market_cap
+      }
 
     def _calculate_quality_features(self, features):
         """Calculate data quality features"""
