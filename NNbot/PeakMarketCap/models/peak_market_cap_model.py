@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,6 +20,7 @@ from utils.early_stopping import EarlyStopping
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from torch.utils.data import WeightedRandomSampler
 import torch.cuda.amp as amp
+import joblib
 
 
 
@@ -382,6 +384,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': ema.module.state_dict(),  # Save EMA model state
@@ -404,6 +407,52 @@ def train_peak_market_cap_model(train_loader, val_loader,
     return peak_market_cap_model, best_val_loss
 
 
+def save_scalers(train_dataset, output_dir='scalers'):
+    """
+    Save global and target scalers from the dataset.
+    
+    Args:
+        train_dataset (TokenDataset): The training dataset containing scalers
+        output_dir (str, optional): Directory to save scalers. Defaults to 'scalers'.
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save global scaler
+    if hasattr(train_dataset, 'global_scaler'):
+        joblib.dump(train_dataset.global_scaler, 
+                    os.path.join(output_dir, 'global_scaler.joblib'))
+    
+    # Save target scaler
+    if hasattr(train_dataset, 'target_scaler'):
+        joblib.dump(train_dataset.target_scaler, 
+                    os.path.join(output_dir, 'target_scaler.joblib'))
+
+def load_scalers(scaler_dir='scalers'):
+    """
+    Load previously saved scalers.
+    
+    Args:
+        scaler_dir (str, optional): Directory where scalers are saved. Defaults to 'scalers'.
+    
+    Returns:
+        dict: A dictionary containing loaded scalers
+    """
+    scalers = {}
+    
+    # Try to load global scaler
+    global_scaler_path = os.path.join(scaler_dir, 'global_scaler.joblib')
+    if os.path.exists(global_scaler_path):
+        scalers['global'] = joblib.load(global_scaler_path)
+    
+    # Try to load target scaler
+    target_scaler_path = os.path.join(scaler_dir, 'target_scaler.joblib')
+    if os.path.exists(target_scaler_path):
+        scalers['target'] = joblib.load(target_scaler_path)
+    
+    return scalers
+
+
 def main():
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -421,6 +470,7 @@ def main():
 
     # Create datasets
     train_dataset_peak = TokenDataset(train_df)
+    save_scalers(train_dataset_peak)
     val_dataset_peak = TokenDataset(val_df, scaler={
         'global': train_dataset_peak.global_scaler,
         'target': train_dataset_peak.target_scaler
@@ -428,6 +478,7 @@ def main():
 
     # Calculate sample weights for training data
     weights = train_dataset_peak._calculate_sample_weights(train_df)
+   
     sampler = WeightedRandomSampler(weights, len(weights))
 
     # Create data loaders with weighted sampling for training

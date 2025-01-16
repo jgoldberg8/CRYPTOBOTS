@@ -1,3 +1,4 @@
+import joblib
 from Before30.models.peak_before_30_model import HitPeakBefore30Predictor
 from PeakMarketCap.models.peak_market_cap_model import PeakMarketCapPredictor
 from PeakMarketCap.models.token_dataset import TokenDataset
@@ -73,9 +74,20 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Get scaler from checkpoint
-      global_scaler = checkpoint.get('global_scaler')
+      # Try to load global scaler from file
+      global_scaler = None
+      scaler_dir = 'scalers'
+      global_scaler_path = os.path.join(scaler_dir, 'hit_peak_global_scaler.joblib')
       
+      if os.path.exists(global_scaler_path):
+          try:
+              global_scaler = joblib.load(global_scaler_path)
+          except Exception as e:
+              print(f"Error loading global scaler: {e}")
+              # Fallback: try to load from checkpoint if available
+              global_scaler = checkpoint.get('global_scaler')
+      
+      # If no scaler found, this will be None
       return {
           'model': model,
           'scaler': global_scaler
@@ -96,9 +108,30 @@ class TradingSimulator:
       model.load_state_dict(checkpoint['model_state_dict'])
       model.eval()
       
-      # Get scalers from checkpoint
-      global_scaler = checkpoint.get('global_scaler')
-      target_scaler = checkpoint.get('target_scaler')
+      # Try to load scalers from file
+      scaler_dir = 'scalers'
+      global_scaler = None
+      target_scaler = None
+      
+      # Try loading global scaler
+      global_scaler_path = os.path.join(scaler_dir, 'hit_peak_global_scaler.joblib')
+      if os.path.exists(global_scaler_path):
+          try:
+              global_scaler = joblib.load(global_scaler_path)
+          except Exception as e:
+              print(f"Error loading global scaler: {e}")
+              # Fallback: try to load from checkpoint if available
+              global_scaler = checkpoint.get('global_scaler')
+      
+      # Try loading target scaler
+      target_scaler_path = os.path.join(scaler_dir, 'hit_peak_target_scaler.joblib')
+      if os.path.exists(target_scaler_path):
+          try:
+              target_scaler = joblib.load(target_scaler_path)
+          except Exception as e:
+              print(f"Error loading target scaler: {e}")
+              # Fallback: try to load from checkpoint if available
+              target_scaler = checkpoint.get('target_scaler')
       
       return {
           'model': model,
@@ -219,10 +252,38 @@ class TradingSimulator:
       df = pd.DataFrame([features])
       df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
       
-      # Create dataset with our stored scalers
-      dataset = TokenDataset(df, scaler={'global': self.global_scaler, 'target': self.target_scaler}, train=False)
+      # Additional error handling for scaler loading
+      if self.global_scaler is None or self.target_scaler is None:
+          print("Warning: Scalers are not loaded. Attempting to load from files...")
+          
+          # Try loading scalers from files
+          try:
+              import joblib
+              import os
+              
+              scaler_dir = 'scalers'
+              global_scaler_path = os.path.join(scaler_dir, 'hit_peak_global_scaler.joblib')
+              target_scaler_path = os.path.join(scaler_dir, 'hit_peak_target_scaler.joblib')
+              
+              if os.path.exists(global_scaler_path):
+                  self.global_scaler = joblib.load(global_scaler_path)
+              
+              if os.path.exists(target_scaler_path):
+                  self.target_scaler = joblib.load(target_scaler_path)
+          
+          except Exception as e:
+              print(f"Error loading scalers from files: {e}")
+              return None
       
-      return dataset._preprocess_data(df, fit=False)
+      # Create dataset with our stored scalers
+      try:
+          dataset = TokenDataset(df, scaler={'global': self.global_scaler, 'target': self.target_scaler}, train=False)
+          return dataset._preprocess_data(df, fit=False)
+      except Exception as e:
+          print(f"Error in feature calculation: {e}")
+          return None
+    
+
     def _should_enter_trade(self, token_mint):
       """Determine if we should enter a trade based on model predictions"""
       try:
