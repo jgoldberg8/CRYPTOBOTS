@@ -83,92 +83,92 @@ class ScalerManager:
     
 
 class TradingSimulator:
-   def __init__(self, config, peak_before_30_model_path, peak_market_cap_model_path):
-    # Initialize logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('trading_simulator.log'),
-            logging.StreamHandler()
-        ]
-    )
-    self.logger = logging.getLogger(__name__)
-    
-    # Initialize scaler management
-    self.scaler_manager = ScalerManager()
-    
-    # Load ML models
-    self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    self.logger.info(f"Using device: {self.device}")
-    
-    # Load before30 model and scaler
-    try:
-        model_data = self._load_peak_before_30_model(peak_before_30_model_path)
-        self.peak_before_30_model = model_data['model']
-        self.before30_global_scaler, _ = self.scaler_manager.load_scalers('before30')
-        if self.before30_global_scaler is None:
-            self.before30_global_scaler = model_data['scaler']
-            if self.before30_global_scaler is not None:
-                self.scaler_manager.save_scalers('before30', global_scaler=self.before30_global_scaler)
-    except Exception as e:
-        self.logger.error(f"Error loading peak_before_30 model: {e}")
-        raise
-        
-    # Load market cap model and scalers
-    try:
-        market_cap_data = self._load_peak_market_cap_model(peak_market_cap_model_path)
-        self.peak_market_cap_model = market_cap_data['model']
-        self.market_cap_global_scaler, self.market_cap_target_scaler = self.scaler_manager.load_scalers('market_cap')
-        
-        # If scalers not found in files, use from model checkpoint
-        if self.market_cap_global_scaler is None:
-            self.market_cap_global_scaler = market_cap_data.get('global_scaler')
-            if self.market_cap_global_scaler is not None:
-                self.scaler_manager.save_scalers('market_cap', global_scaler=self.market_cap_global_scaler)
-                
-        if self.market_cap_target_scaler is None:
-            self.market_cap_target_scaler = market_cap_data.get('target_scaler')
-            if self.market_cap_target_scaler is not None:
-                self.scaler_manager.save_scalers('market_cap', target_scaler=self.market_cap_target_scaler)
-    except Exception as e:
-        self.logger.error(f"Error loading peak_market_cap model: {e}")
-        raise
-        
-    # Verify required scalers are available
-    if self.before30_global_scaler is None:
-        self.logger.error("Failed to load Before30 global scaler")
-        raise RuntimeError("Required Before30 scaler not available")
-        
-    if self.market_cap_global_scaler is None or self.market_cap_target_scaler is None:
-        self.logger.error("Failed to load Market Cap scalers")
-        raise RuntimeError("Required Market Cap scalers not available")
-        
-    # Initialize WebSocket configuration
-    self.config = config
-    self.ws = None
-    self.is_connecting = False
-    self._subscribed_tokens = set()
-    
-    # Trading state management
-    self.active_tokens = {}
-    self.positions = {}
-    
-    # Time windows for data collection
-    self.time_windows = {
-        '5s': [(0, 5), (5, 10), (10, 15), (15, 20), (20, 25), (25, 30)],
-        '10s': [(0, 10), (10, 20), (20, 30)],
-        '20s': [(0, 20)],
-        '30s': [(0, 30)]
-    }
-    
-    # Trading metrics
-    self.trading_metrics = {
-        'total_trades': 0,
-        'successful_trades': 0,
-        'total_profit_loss': 0,
-        'positions': []
-    }
+    def __init__(self, config, peak_before_30_model_path, peak_market_cap_model_path):
+      # Initialize logging
+      logging.basicConfig(
+          level=logging.INFO,
+          format='%(asctime)s - %(levelname)s - %(message)s',
+          handlers=[
+              logging.FileHandler('trading_simulator.log'),
+              logging.StreamHandler()
+          ]
+      )
+      self.logger = logging.getLogger(__name__)
+      
+      # Initialize scaler management
+      self.scaler_manager = ScalerManager()
+      
+      # Load ML models
+      self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+      self.logger.info(f"Using device: {self.device}")
+      
+      # Load before30 model and scaler
+      try:
+          model_data = self._load_peak_before_30_model(peak_before_30_model_path)
+          self.peak_before_30_model = model_data['model']
+          self.before30_global_scaler, _ = self.scaler_manager.load_scalers('before30')
+          if self.before30_global_scaler is None:
+              self.before30_global_scaler = model_data['scaler']
+              if self.before30_global_scaler is not None:
+                  self.scaler_manager.save_scalers('before30', global_scaler=self.before30_global_scaler)
+      except Exception as e:
+          self.logger.error(f"Error loading peak_before_30 model: {e}")
+          raise
+          
+      # Load market cap model and scalers
+      try:
+          market_cap_data = self._load_peak_market_cap_model(peak_market_cap_model_path)
+          self.peak_market_cap_model = market_cap_data['model']
+          self.market_cap_global_scaler, self.market_cap_target_scaler = self.scaler_manager.load_scalers('market_cap')
+          
+          # If scalers not found in files, use from model checkpoint
+          if self.market_cap_global_scaler is None:
+              self.market_cap_global_scaler = market_cap_data.get('global_scaler')
+              if self.market_cap_global_scaler is not None:
+                  self.scaler_manager.save_scalers('market_cap', global_scaler=self.market_cap_global_scaler)
+                  
+          if self.market_cap_target_scaler is None:
+              self.market_cap_target_scaler = market_cap_data.get('target_scaler')
+              if self.market_cap_target_scaler is not None:
+                  self.scaler_manager.save_scalers('market_cap', target_scaler=self.market_cap_target_scaler)
+      except Exception as e:
+          self.logger.error(f"Error loading peak_market_cap model: {e}")
+          raise
+          
+      # Verify required scalers are available
+      if self.before30_global_scaler is None:
+          self.logger.error("Failed to load Before30 global scaler")
+          raise RuntimeError("Required Before30 scaler not available")
+          
+      if self.market_cap_global_scaler is None or self.market_cap_target_scaler is None:
+          self.logger.error("Failed to load Market Cap scalers")
+          raise RuntimeError("Required Market Cap scalers not available")
+          
+      # Initialize WebSocket configuration
+      self.config = config
+      self.ws = None
+      self.is_connecting = False
+      self._subscribed_tokens = set()
+      
+      # Trading state management
+      self.active_tokens = {}
+      self.positions = {}
+      
+      # Time windows for data collection
+      self.time_windows = {
+          '5s': [(0, 5), (5, 10), (10, 15), (15, 20), (20, 25), (25, 30)],
+          '10s': [(0, 10), (10, 20), (20, 30)],
+          '20s': [(0, 20)],
+          '30s': [(0, 30)]
+      }
+      
+      # Trading metrics
+      self.trading_metrics = {
+          'total_trades': 0,
+          'successful_trades': 0,
+          'total_profit_loss': 0,
+          'positions': []
+      }
 
     def _load_peak_before_30_model(self, model_path):
         """Load the peak before 30 prediction model"""
