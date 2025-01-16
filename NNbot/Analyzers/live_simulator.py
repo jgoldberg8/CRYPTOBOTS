@@ -408,19 +408,14 @@ class TradingSimulator:
       mint = transaction['mint']
       current_time = datetime.now()
       
-      # Debug print
-      print(f"Received transaction for token: {mint}")
-      
       # Initialize token data if new
       if mint not in self.active_tokens:
-          print(f"New token detected: {mint}")
           self.active_tokens[mint] = self._initialize_token_data(transaction)
       
       token_data = self.active_tokens[mint]
       
       # Update token data
       if not token_data['first_trade_time']:
-          print(f"First trade for token: {mint}")
           token_data['first_trade_time'] = current_time
           token_data['initial_market_cap'] = transaction['marketCapSol']
       
@@ -433,11 +428,9 @@ class TradingSimulator:
       # Trading logic
       if token_data['trade_status'] == 'monitoring':
           time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
-          print(f"Token {mint} monitoring time: {time_since_first:.2f} seconds")
           
           # Check if we should make a trading decision (after 30 seconds)
           if time_since_first >= 30:
-              print(f"Evaluating trade entry for token: {mint}")
               if self._should_enter_trade(mint):
                   self._execute_trade(mint, 'buy')
                   
@@ -479,10 +472,7 @@ class TradingSimulator:
           if isinstance(data, dict) and data.get('message'):
               return
           
-          # print(f"Received message type: {data.get('txType')}")  # Debug log
-          
           if data.get('txType') == 'create':
-              print(f"New token created: {data['mint']}")
               self.handle_token_creation(data)
               
           elif data.get('txType') in ['buy', 'sell']:
@@ -494,11 +484,9 @@ class TradingSimulator:
                   'marketCapSol': data['marketCapSol'],
                   'wallet': data.get('wallet', 'unknown')
               }
-              print(f"Processing transaction for {data['mint']}: {data['txType']}")  # Debug log
               self.handle_transaction(transaction)
       
       except Exception as e:
-          print(f"Error in on_message: {str(e)}")
           self.logger.error(f"Error processing message: {e}")
 
     def connect(self):
