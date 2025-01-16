@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 from collections import defaultdict
 import torch
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
 class TradingSimulator:
     def __init__(self, config, peak_before_30_model_path, peak_market_cap_model_path):
@@ -59,55 +58,53 @@ class TradingSimulator:
             'positions': []
         }
 
-    from sklearn.preprocessing import StandardScaler
-
     def _load_peak_before_30_model(self, model_path):
-        """Load the peak before 30 prediction model and get scaler"""
-        checkpoint = torch.load(model_path, map_location=self.device)
-        
-        # Initialize model
-        model = HitPeakBefore30Predictor(
-            input_size=11,
-            hidden_size=256,
-            num_layers=3, 
-            dropout_rate=0.5
-        ).to(self.device)
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        
-        # Create a new StandardScaler for data scaling
-        global_scaler = StandardScaler()
-        
-        return {
-            'model': model,
-            'scaler': global_scaler
-        }
+      """Load the peak before 30 prediction model and get scaler"""
+      checkpoint = torch.load(model_path, map_location=self.device)
+      
+      # Initialize model
+      model = HitPeakBefore30Predictor(
+          input_size=11,
+          hidden_size=256,
+          num_layers=3, 
+          dropout_rate=0.5
+      ).to(self.device)
+      
+      model.load_state_dict(checkpoint['model_state_dict'])
+      model.eval()
+      
+      # Get scaler from checkpoint
+      global_scaler = checkpoint.get('global_scaler')
+      
+      return {
+          'model': model,
+          'scaler': global_scaler
+      }
 
     def _load_peak_market_cap_model(self, model_path):
-        """Load the peak market cap prediction model"""
-        checkpoint = torch.load(model_path, map_location=self.device)
-        
-        # Initialize model
-        model = PeakMarketCapPredictor(
-            input_size=11,
-            hidden_size=1024,
-            num_layers=4,
-            dropout_rate=0.4
-        ).to(self.device)
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        
-        # Create new StandardScalers for data scaling
-        global_scaler = StandardScaler()
-        target_scaler = StandardScaler()
-        
-        return {
-            'model': model,
-            'global_scaler': global_scaler,
-            'target_scaler': target_scaler
-        }
+      """Load the peak market cap prediction model"""
+      checkpoint = torch.load(model_path, map_location=self.device)
+      
+      # Initialize model
+      model = PeakMarketCapPredictor(
+          input_size=11,
+          hidden_size=1024,
+          num_layers=4,
+          dropout_rate=0.4
+      ).to(self.device)
+      
+      model.load_state_dict(checkpoint['model_state_dict'])
+      model.eval()
+      
+      # Get scalers from checkpoint
+      global_scaler = checkpoint.get('global_scaler')
+      target_scaler = checkpoint.get('target_scaler')
+      
+      return {
+          'model': model,
+          'global_scaler': global_scaler,
+          'target_scaler': target_scaler
+      }
 
 
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
@@ -222,18 +219,8 @@ class TradingSimulator:
       df = pd.DataFrame([features])
       df['creation_time'] = token_data['creation_time'].strftime("%Y-%m-%d %H:%M:%S")
       
-      # Fit the scaler before transforming
-      if not hasattr(self, '_features_scaler'):
-          from sklearn.preprocessing import StandardScaler
-          self._features_scaler = StandardScaler()
-          # Fit the scaler on the current features
-          self._features_scaler.fit(df)
-      
       # Create dataset with our stored scalers
-      dataset = TokenDataset(df, 
-          scaler={'global': self._features_scaler, 'target': self.target_scaler}, 
-          train=False
-      )
+      dataset = TokenDataset(df, scaler={'global': self.global_scaler, 'target': self.target_scaler}, train=False)
       
       return dataset._preprocess_data(df, fit=False)
     def _should_enter_trade(self, token_mint):
