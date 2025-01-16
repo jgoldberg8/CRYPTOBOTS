@@ -249,7 +249,7 @@ class TradingSimulator:
                   for feature, value in metrics.items():
                       features[f'{feature}_{window_key}'] = value
 
-          # Create base DataFrame with explicit index
+          # Create base DataFrame for dataset processing
           base_data = {
               'initial_investment_ratio': token_data['initial_investment_ratio'],
               'initial_market_cap': token_data['initial_market_cap'],
@@ -275,31 +275,27 @@ class TradingSimulator:
           
           if is_peak_pred:
               # Global features for Market Cap model (5 features)
-              market_cap_global_features = {
-                  'initial_market_cap': token_data['initial_market_cap'],
-                  'volume_pressure': token_data['volume_pressure'],
-                  'buy_sell_ratio': token_data['buy_sell_ratio'],
-                  'price_volatility': features['price_volatility_0to30s'],
-                  'momentum': features['momentum_0to30s']
-              }
-              # Update existing DataFrame instead of concatenating
-              for key, value in market_cap_global_features.items():
-                  df[key] = value
+              market_cap_global_features = np.array([[
+                  token_data['initial_market_cap'],
+                  token_data['volume_pressure'],
+                  token_data['buy_sell_ratio'],
+                  features['price_volatility_0to30s'],
+                  features['momentum_0to30s']
+              ]])
+              features['global'] = market_cap_global_features
               df['peak_market_cap'] = token_data['current_market_cap']
           else:
               # Global features for Before30 model (7 features)
-              before30_global_features = {
-                  'initial_investment_ratio': token_data['initial_investment_ratio'],
-                  'initial_market_cap': token_data['initial_market_cap'],
-                  'volume_pressure': token_data['volume_pressure'],
-                  'buy_sell_ratio': token_data['buy_sell_ratio'],
-                  'price_volatility': features['price_volatility_0to30s'],
-                  'volume_volatility': features['volume_volatility_0to30s'],
-                  'momentum': features['momentum_0to30s']
-              }
-              # Update existing DataFrame instead of concatenating
-              for key, value in before30_global_features.items():
-                  df[key] = value
+              before30_global_features = np.array([[
+                  token_data['initial_investment_ratio'],
+                  token_data['initial_market_cap'],
+                  token_data['volume_pressure'],
+                  token_data['buy_sell_ratio'],
+                  features['price_volatility_0to30s'],
+                  features['volume_volatility_0to30s'],
+                  features['momentum_0to30s']
+              ]])
+              features['global'] = before30_global_features
 
           # Create dataset with correct scalers
           dataset = TokenDataset(
@@ -316,13 +312,8 @@ class TradingSimulator:
           if processed_data is None:
               return None
           
-          # Store the appropriate global features with correct shape
-          if is_peak_pred:
-              global_features_array = np.array([list(market_cap_global_features.values())])  # Shape: [1, 5]
-          else:
-              global_features_array = np.array([list(before30_global_features.values())])    # Shape: [1, 7]
-          
-          processed_data['global'] = global_features_array
+          # Keep the global features we created earlier
+          processed_data['global'] = features['global']
           
           # Reshape features for each time window
           for window_type in ['5s', '10s', '20s', '30s']:
@@ -338,33 +329,6 @@ class TradingSimulator:
       except Exception as e:
           self.logger.error(f"Error in feature calculation: {str(e)}")
           return None
-
-    def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
-        """Calculate metrics for a specific timeframe"""
-        default_metrics = {
-            'transaction_count': 0,
-            'buy_pressure': 0,
-            'volume': 0,
-            'rsi': 50,
-            'price_volatility': 0,
-            'volume_volatility': 0,
-            'momentum': 0,
-            'trade_amount_variance': 0,
-            'transaction_rate': 0,
-            'trade_concentration': 0,
-            'unique_wallets': 0
-        }
-
-        try:
-            interval_start = start_time + timedelta(seconds=start)
-            interval_end = start_time + timedelta(seconds=end)
-            
-            window_txs = [tx for tx in transactions 
-                         if interval_start <= tx['timestamp'] <= interval_end]
-
-            if not window_txs:
-                return default_metrics
-
             # Calculate metrics
             tx_count = len(window_txs)
             buy_count = sum(1 for tx in window_txs if tx['txType'] == 'buy')
