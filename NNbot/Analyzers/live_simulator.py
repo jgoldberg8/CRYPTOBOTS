@@ -437,47 +437,79 @@ class TradingSimulator:
         except Exception as e:
             self.logger.error(f"Error processing message: {e}")
 
+    def connect(self):
+      """Establish WebSocket connection"""
+      if self.is_connecting:
+          return
+          
+      self.is_connecting = True
+      try:
+          websocket.enableTrace(True)  # Enable detailed websocket logging
+          
+          self.ws = websocket.WebSocketApp(
+              self.config['websocket_url'],
+              on_message=self.on_message,
+              on_error=self.on_error,
+              on_close=self.on_close,
+              on_open=self.on_open,
+              on_ping=self.on_ping,
+              on_pong=self.on_pong
+          )
+          
+          # Add websocket options for stability
+          websocket_options = {
+              'reconnect': 5,
+              'ping_interval': 30,
+              'ping_timeout': 10,
+              'skip_utf8_validation': True,
+              'suppress_origin': True
+          }
+          
+          print(f"Attempting to connect to: {self.config['websocket_url']}")
+          self.ws.run_forever(**websocket_options)
+          
+      except Exception as e:
+          self.logger.error(f"Connection error: {e}")
+          print(f"Detailed connection error: {str(e)}")
+          time.sleep(5)
+          threading.Thread(target=self.connect, daemon=True).start()
+      finally:
+          self.is_connecting = False
+
     def on_error(self, ws, error):
-        self.logger.error(f"WebSocket error: {error}")
+      """Handle WebSocket errors"""
+      self.logger.error(f"WebSocket error: {str(error)}")
+      print(f"Detailed WebSocket error: {str(error)}")
+      if not self.is_connecting:
+          time.sleep(5)
+          self.connect()
 
     def on_close(self, ws, close_status_code, close_msg):
-        if not self.is_connecting:
-            self.logger.warning(f"WebSocket closed: {close_status_code} - {close_msg}")
-            threading.Thread(target=self.connect, daemon=True).start()
+      """Handle WebSocket closure"""
+      self.logger.warning(f"WebSocket closed: {close_status_code} - {close_msg}")
+      print(f"WebSocket closed with status {close_status_code}: {close_msg}")
+      if not self.is_connecting:
+          time.sleep(5)
+          threading.Thread(target=self.connect, daemon=True).start()
 
     def on_open(self, ws):
-        self.logger.info("WebSocket connected")
-        subscribe_msg = {"method": "subscribeNewToken"}
-        ws.send(json.dumps(subscribe_msg))
+      """Handle WebSocket connection open"""
+      self.logger.info("WebSocket connected")
+      print("WebSocket connection established")
+      try:
+          subscribe_msg = {"method": "subscribeNewToken"}
+          ws.send(json.dumps(subscribe_msg))
+          print("Subscription message sent")
+      except Exception as e:
+          print(f"Error sending subscription message: {str(e)}")
 
-    def connect(self):
-        """Establish WebSocket connection"""
-        if self.is_connecting:
-            return
-            
-        self.is_connecting = True
-        try:
-            websocket.enableTrace(False)
-            
-            self.ws = websocket.WebSocketApp(
-                self.config['websocket_url'],
-                on_message=self.on_message,
-                on_error=self.on_error,
-                on_close=self.on_close,
-                on_open=self.on_open
-            )
-            
-            self.ws.run_forever(
-                reconnect=5,
-                ping_interval=30,
-                ping_timeout=10
-            )
-        except Exception as e:
-            self.logger.error(f"Connection error: {e}")
-            time.sleep(5)
-            threading.Thread(target=self.connect, daemon=True).start()
-        finally:
-            self.is_connecting = False
+    def on_ping(self, ws, message):
+      """Handle ping messages"""
+      print("Received ping")
+      try:
+          ws.pong(message)
+      except Exception as e:
+          print(f"Error sending pong: {str(e)}")
 
     def print_trading_metrics(self):
         """Print current trading metrics"""
@@ -552,6 +584,7 @@ def main():
     peak_market_cap_model_path = 'best_peak_market_cap_model.pth'
 
     try:
+        print("Starting trading simulator...")
         simulator = TradingSimulator(
             config,
             peak_before_30_model_path,
@@ -559,6 +592,7 @@ def main():
         )
         
         # Start trading simulation
+        print("Initiating WebSocket connection...")
         simulator.connect()
         
         # Print metrics every 5 minutes
@@ -571,6 +605,4 @@ def main():
         simulator.print_trading_metrics()
     except Exception as e:
         print(f"Critical error in trading simulation: {e}")
-
-if __name__ == "__main__":
-    main()
+        print(f"Detailed error: {str(e)}")
