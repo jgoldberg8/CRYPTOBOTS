@@ -194,67 +194,98 @@ class TradingSimulator:
 
     def _should_enter_trade(self, token_mint):
       """Determine if we should enter a trade based on model predictions"""
-      token_data = self.active_tokens[token_mint]
-      
-      # Ensure we have 30 seconds of data
-      if len(token_data['transactions']) < 5:  # Minimum transactions threshold
-          return False
+      try:
+          token_data = self.active_tokens[token_mint]
           
-      # Calculate features
-      features = self._calculate_features(token_data)
-      if features is None:
-          return False
+          # Ensure we have 30 seconds of data
+          if len(token_data['transactions']) < 5:  # Minimum transactions threshold
+              print(f"Not enough transactions for {token_mint}: {len(token_data['transactions'])}")
+              return False
+              
+          # Calculate features
+          features = self._calculate_features(token_data)
+          if features is None:
+              print(f"Could not calculate features for {token_mint}")
+              return False
 
-      # Create dataset inputs
-      x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
-      x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
-      x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
-      x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
-      global_features = torch.FloatTensor(features['global']).to(self.device)
-      quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
-      
-      # Make prediction with peak_before_30 model
-      with torch.no_grad():
-          # First model prediction
-          print(f"\n{'*'*50}")
-          print(f"PREDICTION - Token: {token_mint}")
-          print(f"Running peak_before_30 model...")
+          # Create dataset inputs
+          x_5s = torch.FloatTensor(features['data']['5s']).unsqueeze(0).to(self.device)
+          x_10s = torch.FloatTensor(features['data']['10s']).unsqueeze(0).to(self.device)
+          x_20s = torch.FloatTensor(features['data']['20s']).unsqueeze(0).to(self.device)
+          x_30s = torch.FloatTensor(features['data']['30s']).unsqueeze(0).to(self.device)
+          global_features = torch.FloatTensor(features['global']).unsqueeze(0).to(self.device)
+          quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
           
-          peak_before_30_pred = self.peak_before_30_model(
-              x_5s, x_10s, x_20s, x_30s,
-              global_features, quality_features
-          )
-          
-          # Convert to probability
-          prob_peaked = torch.sigmoid(peak_before_30_pred).item()
-          print(f"Probability already peaked: {prob_peaked:.2%}")
-          
-          # If probability of having peaked is low, predict final peak
-          if prob_peaked < 0.5:
-              print("Token hasn't peaked - Running peak_market_cap model...")
-              peak_pred = self.peak_market_cap_model(
+          # Make prediction with peak_before_30 model
+          with torch.no_grad():
+              # First model prediction
+              print(f"\n{'*'*50}")
+              print(f"PREDICTION - Token: {token_mint}")
+              print("Input tensor shapes:")
+              print(f"x_5s: {x_5s.shape}")
+              print(f"x_10s: {x_10s.shape}")
+              print(f"x_20s: {x_20s.shape}")
+              print(f"x_30s: {x_30s.shape}")
+              print(f"global_features: {global_features.shape}")
+              print(f"quality_features: {quality_features.shape}")
+              
+              print(f"Running peak_before_30 model...")
+              
+              peak_before_30_pred = self.peak_before_30_model(
                   x_5s, x_10s, x_20s, x_30s,
                   global_features, quality_features
               )
               
-              # Convert prediction back to original scale
-              dummy_pred = np.zeros((1, 2))
-              dummy_pred[:, 0] = peak_pred.cpu().numpy()
-              transformed_pred = dataset.target_scaler.inverse_transform(dummy_pred)
-              final_pred = np.expm1(transformed_pred[0, 0])
+              # Convert to probability
+              prob_peaked = torch.sigmoid(peak_before_30_pred).item()
+              print(f"Probability already peaked: {prob_peaked:.2%}")
               
-              print(f"Predicted peak market cap: {final_pred:.4f}")
-              print(f"Current market cap: {token_data['current_market_cap']:.4f}")
-              print(f"Potential upside: {((final_pred/token_data['current_market_cap'] - 1) * 100):.2f}%")
-              
-              token_data['predicted_peak'] = final_pred
-              print(f"{'*'*50}\n")
-              return True
-          else:
-              print("Token predicted to have already peaked - Skipping trade")
-              print(f"{'*'*50}\n")
-              
-      return False
+              # If probability of having peaked is low, predict final peak
+              if prob_peaked < 0.5:
+                  print("Token hasn't peaked - Running peak_market_cap model...")
+                  peak_pred = self.peak_market_cap_model(
+                      x_5s, x_10s, x_20s, x_30s,
+                      global_features, quality_features
+                  )
+                  
+                  # Convert prediction back to original scale
+                  dummy_pred = np.zeros((1, 2))
+                  dummy_pred[:, 0] = peak_pred.cpu().numpy()
+                  # Create dummy dataset for scaling
+                  df = pd.DataFrame([{
+                      'peak_market_cap': token_data['current_market_cap']
+                  }])
+                  temp_dataset = TokenDataset(df, train=False)
+                  
+                  transformed_pred = temp_dataset.target_scaler.inverse_transform(dummy_pred)
+                  final_pred = np.expm1(transformed_pred[0, 0])
+                  
+                  current_mcap = token_data['current_market_cap']
+                  potential_upside = ((final_pred/current_mcap - 1) * 100)
+                  
+                  print(f"Current Market Cap: {current_mcap:.4f}")
+                  print(f"Predicted Peak: {final_pred:.4f}")
+                  print(f"Potential Upside: {potential_upside:.2f}%")
+                  
+                  if potential_upside > 20:  # Only trade if potential upside > 20%
+                      token_data['predicted_peak'] = final_pred
+                      print(f"Sufficient upside potential - Will enter trade")
+                      print(f"{'*'*50}\n")
+                      return True
+                  else:
+                      print(f"Insufficient upside potential - Skipping trade")
+                      print(f"{'*'*50}\n")
+                      return False
+              else:
+                  print("Token predicted to have already peaked - Skipping trade")
+                  print(f"{'*'*50}\n")
+                  return False
+                  
+      except Exception as e:
+          print(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
+          import traceback
+          traceback.print_exc()
+          return False
 
     def _write_trade_to_file(self, trade_data):
       """Write trade details to the PnL file"""
@@ -415,27 +446,60 @@ class TradingSimulator:
           if token_data['current_market_cap'] >= token_data['predicted_peak']:
               self._execute_trade(mint, 'sell')
 
+    def handle_token_creation(self, creation_data):
+      """Handle new token creation event"""
+      try:
+          mint = creation_data['mint']
+          print(f"Initializing new token: {mint}")  # Debug log
+          
+          token_entry = self._initialize_token_data(creation_data)
+          self.active_tokens[mint] = token_entry
+          
+          print(f"Successfully initialized token {mint}")  # Debug log
+          
+          # Subscribe to token trades
+          if self.ws and self.ws.sock and self.ws.sock.connected:
+              self._subscribed_tokens.add(mint)
+              sub_message = {
+                  "method": "subscribeTokenTrade",
+                  "keys": [mint]
+              }
+              self.ws.send(json.dumps(sub_message))
+              print(f"Subscribed to trades for {mint}")  # Debug log
+
+      except Exception as e:
+          print(f"Error in handle_token_creation: {str(e)}")  # Debug log
+          self.logger.error(f"Error in handle_token_creation: {e}")          
+
     def on_message(self, ws, message):
-        """Handle WebSocket message"""
-        try:
-            data = json.loads(message)
-            
-            if isinstance(data, dict) and data.get('message'):
-                return
-            
-            if data.get('txType') in ['buy', 'sell']:
-                transaction = {
-                    'mint': data['mint'],
-                    'txType': data['txType'],
-                    'tokenAmount': data['tokenAmount'],
-                    'solAmount': data['solAmount'],
-                    'marketCapSol': data['marketCapSol'],
-                    'wallet': data.get('wallet', 'unknown')
-                }
-                self.handle_transaction(transaction)
-        
-        except Exception as e:
-            self.logger.error(f"Error processing message: {e}")
+      """Handle WebSocket message"""
+      try:
+          data = json.loads(message)
+          
+          if isinstance(data, dict) and data.get('message'):
+              return
+          
+          print(f"Received message type: {data.get('txType')}")  # Debug log
+          
+          if data.get('txType') == 'create':
+              print(f"New token created: {data['mint']}")
+              self.handle_token_creation(data)
+              
+          elif data.get('txType') in ['buy', 'sell']:
+              transaction = {
+                  'mint': data['mint'],
+                  'txType': data['txType'],
+                  'tokenAmount': data['tokenAmount'],
+                  'solAmount': data['solAmount'],
+                  'marketCapSol': data['marketCapSol'],
+                  'wallet': data.get('wallet', 'unknown')
+              }
+              print(f"Processing transaction for {data['mint']}: {data['txType']}")  # Debug log
+              self.handle_transaction(transaction)
+      
+      except Exception as e:
+          print(f"Error in on_message: {str(e)}")
+          self.logger.error(f"Error processing message: {e}")
 
     def connect(self):
       """Establish WebSocket connection"""
@@ -493,11 +557,18 @@ class TradingSimulator:
       self.logger.info("WebSocket connected")
       print("WebSocket connection established")
       try:
+          # Subscribe to new token creation events
           subscribe_msg = {"method": "subscribeNewToken"}
           ws.send(json.dumps(subscribe_msg))
-          print("Subscription message sent")
+          print("Subscribed to new token events")
+          
+          # Subscribe to token trades events
+          trade_msg = {"method": "subscribeTokenTrade"}
+          ws.send(json.dumps(trade_msg))
+          print("Subscribed to token trade events")
+          
       except Exception as e:
-          print(f"Error sending subscription message: {str(e)}")
+          print(f"Error sending subscription messages: {str(e)}")
 
     def on_ping(self, ws, message):
       """Handle ping messages"""
