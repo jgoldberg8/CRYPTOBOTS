@@ -9,9 +9,7 @@ def clean_dataset(df):
     Focuses on early window features and avoids using time_to_peak for feature generation
     """
     # Create a copy at the start to avoid fragmentation
-    df = df.copy()
-    df = df.dropna(subset=critical_cols)
-    df = df[df['time_to_peak'] < 180]
+  
     
     # Drop records with missing critical initial window features
     critical_cols = [
@@ -22,6 +20,9 @@ def clean_dataset(df):
     
     # Drop rows with missing critical columns
     df = df.dropna(subset=critical_cols)
+    df = df.copy()
+    df = df.dropna(subset=critical_cols)
+    df = df[df['time_to_peak'] < 180]
     
     # Create new volume and pressure features based on early windows
     df['volume_pressure_early'] = df['volume_0to5s'] / (df['initial_market_cap'] + 1)
