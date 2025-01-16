@@ -171,33 +171,33 @@ class TradingSimulator:
       }
 
     def _load_peak_before_30_model(self, model_path):
-        """Load the peak before 30 prediction model"""
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found: {model_path}")
-            
-        try:
-            checkpoint = torch.load(model_path, map_location=self.device)
-            
-            # Initialize model
-            model = HitPeakBefore30Predictor(
-                input_size=11,
-                hidden_size=256,
-                num_layers=3,
-                dropout_rate=0.5
-            ).to(self.device)
-            
-            model.load_state_dict(checkpoint['model_state_dict'])
-            model.eval()
-            
-            return {
-                'model': model,
-                'scaler': checkpoint.get('global_scaler')
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error in _load_peak_before_30_model: {e}")
-            raise
-
+      """Load the peak before 30 prediction model"""
+      if not os.path.exists(model_path):
+          raise FileNotFoundError(f"Model file not found: {model_path}")
+          
+      try:
+          checkpoint = torch.load(model_path, map_location=self.device)
+          
+          # Initialize model with correct global feature dimension
+          model = HitPeakBefore30Predictor(
+              input_size=11,
+              hidden_size=256,
+              num_layers=3,
+              dropout_rate=0.5,
+              global_feature_dim=7  # Explicitly set to 7 for Before30 model
+          ).to(self.device)
+          
+          model.load_state_dict(checkpoint['model_state_dict'])
+          model.eval()
+          
+          return {
+              'model': model,
+              'scaler': checkpoint.get('global_scaler')
+          }
+          
+      except Exception as e:
+          self.logger.error(f"Error in _load_peak_before_30_model: {e}")
+          raise
     def _load_peak_market_cap_model(self, model_path):
         """Load the peak market cap prediction model"""
         if not os.path.exists(model_path):
