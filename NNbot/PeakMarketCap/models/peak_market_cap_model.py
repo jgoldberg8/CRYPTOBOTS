@@ -461,7 +461,7 @@ def main():
     print(f"MKL-DNN Enabled: {torch.backends.mkldnn.is_available()}")
     
     # Load and preprocess data
-    df = pd.read_csv('data/token-data.csv')
+    df = pd.read_csv('data/token-data-percent.csv')
     df = clean_dataset(df)
     df = add_data_quality_features(df)
 
