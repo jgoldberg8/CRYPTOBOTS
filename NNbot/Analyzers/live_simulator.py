@@ -276,24 +276,24 @@ class TradingSimulator:
           if is_peak_pred:
               # Global features for Market Cap model (5 features)
               market_cap_global_features = np.array([[
-                  token_data['initial_market_cap'],
-                  token_data['volume_pressure'],
-                  token_data['buy_sell_ratio'],
-                  features['price_volatility_0to30s'],
-                  features['momentum_0to30s']
+                token_data['initial_investment_ratio'],
+                token_data['initial_market_cap'],
+                token_data['volume_pressure'],
+                token_data['buy_sell_ratio'],
+                features['price_volatility_0to30s']
               ]])
               features['global'] = market_cap_global_features
               df['peak_market_cap'] = token_data['current_market_cap']
           else:
               # Global features for Before30 model (7 features)
               before30_global_features = np.array([[
-                  token_data['initial_investment_ratio'],
-                  token_data['initial_market_cap'],
-                  token_data['volume_pressure'],
-                  token_data['buy_sell_ratio'],
-                  features['price_volatility_0to30s'],
-                  features['volume_volatility_0to30s'],
-                  features['momentum_0to30s']
+                token_data['initial_investment_ratio'],
+                token_data['initial_market_cap'],
+                token_data['volume_pressure'],
+                token_data['buy_sell_ratio'],
+                features['price_volatility_0to30s'],
+                features['volume_volatility_0to30s'],
+                features['momentum_0to30s']
               ]])
               features['global'] = before30_global_features
 
