@@ -21,14 +21,7 @@ from torch.utils.data import DataLoader
 
 def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     """
-    Evaluate peak market cap model.
-    
-    Args:
-        peak_market_cap_model_path (str): Path to saved peak market cap model
-        data_paths (list): List of paths to data CSV files
-    
-    Returns:
-        dict: Evaluation metrics, predictions, and additional model information
+    Evaluate percent increase prediction model.
     """
     # Load and preprocess data
     dfs = []
@@ -51,7 +44,7 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     # Initialize model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     input_size = 11
-    peak_market_cap_model = PeakMarketCapPredictor(input_size=input_size,hidden_size=1024,num_layers=4, dropout_rate=0.4).to(device)
+    peak_market_cap_model = PeakMarketCapPredictor(input_size=input_size, hidden_size=1024, num_layers=4, dropout_rate=0.4).to(device)
 
     # Load saved model
     peak_market_cap_checkpoint = torch.load(peak_market_cap_model_path, map_location=device, weights_only=True)
@@ -73,15 +66,15 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
             global_features = batch['global_features'].to(device)
             quality_features = batch['quality_features'].to(device)
             
-            peak_market_cap_pred = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
+            percent_increase_pred = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
             
-            all_predictions.append(peak_market_cap_pred.cpu())
+            all_predictions.append(percent_increase_pred.cpu())
             all_true_values.append(batch['targets'][:, 0].cpu().unsqueeze(1))
 
     predictions = torch.cat(all_predictions, dim=0).numpy()
     true_values = torch.cat(all_true_values, dim=0).numpy()
 
-    # Create a dummy array with zeros for the second column to match scaler's expected shape
+    # Create dummy arrays for inverse transform
     dummy_predictions = np.zeros((predictions.shape[0], 2))
     dummy_predictions[:, 0] = predictions.squeeze()
     
@@ -90,63 +83,55 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
 
     # Inverse transform using the scaler
     target_scaler = test_dataset.target_scaler
-    dummy_predictions = target_scaler.inverse_transform(dummy_predictions)
-    dummy_true_values = target_scaler.inverse_transform(dummy_true_values)
-
-    # Exponentiate because of log1p transformation in clean_dataset
-    peak_market_cap_predictions = np.expm1(dummy_predictions[:, 0])
-    true_peak_market_cap = np.expm1(dummy_true_values[:, 0])
+    percent_increase_predictions = target_scaler.inverse_transform(dummy_predictions)[:, 0]
+    true_percent_increase = target_scaler.inverse_transform(dummy_true_values)[:, 0]
 
     # Calculate metrics on actual values
     metrics = {
         'percent_increase': {
-            'mae': mean_absolute_error(true_peak_market_cap, peak_market_cap_predictions),
-            'mse': mean_squared_error(true_peak_market_cap, peak_market_cap_predictions),
-            'rmse': np.sqrt(mean_squared_error(true_peak_market_cap, peak_market_cap_predictions)),
-            'r2': r2_score(true_peak_market_cap, peak_market_cap_predictions)
+            'mae': mean_absolute_error(true_percent_increase, percent_increase_predictions),
+            'mse': mean_squared_error(true_percent_increase, percent_increase_predictions),
+            'rmse': np.sqrt(mean_squared_error(true_percent_increase, percent_increase_predictions)),
+            'r2': r2_score(true_percent_increase, percent_increase_predictions)
         }
     }
 
     # Visualization
     plt.figure(figsize=(10, 6))
-    plt.scatter(true_peak_market_cap, peak_market_cap_predictions, alpha=0.5, s=20)
+    plt.scatter(true_percent_increase, percent_increase_predictions, alpha=0.5, s=20)
 
-    max_cap = max(true_peak_market_cap.max(), peak_market_cap_predictions.max())
-    min_cap = min(true_peak_market_cap.min(), peak_market_cap_predictions.min())
-    padding_cap = (max_cap - min_cap) * 0.05
-    lims_cap = [min_cap - padding_cap, max_cap + padding_cap]
+    max_val = max(true_percent_increase.max(), percent_increase_predictions.max())
+    min_val = min(true_percent_increase.min(), percent_increase_predictions.min())
+    padding = (max_val - min_val) * 0.05
+    lims = [min_val - padding, max_val + padding]
 
-    plt.plot(lims_cap, lims_cap, 'r--', lw=2)
-    plt.title('Peak Market Cap: Predicted vs True')
-    plt.xlabel('True Values (SOL)')
-    plt.ylabel('Predicted Values (SOL)')
+    plt.plot(lims, lims, 'r--', lw=2)
+    plt.title('Percent Increase: Predicted vs True')
+    plt.xlabel('True Values (%)')
+    plt.ylabel('Predicted Values (%)')
     plt.text(0.05, 0.95, f'R² = {metrics["percent_increase"]["r2"]:.4f}',
              transform=plt.gca().transAxes, fontsize=10)
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Create a 'Visualizations' subdirectory if it doesn't exist
     visualizations_dir = os.path.join(current_dir, 'Visualizations')
     os.makedirs(visualizations_dir, exist_ok=True)
-    print(visualizations_dir)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(visualizations_dir, 'peak_market_cap_prediction_performance.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(visualizations_dir, 'percent_increase_prediction_performance.png'), dpi=300, bbox_inches='tight')
     plt.close()
+
     # Print evaluation results
-    print("\n=== Peak Market Cap Model Performance Evaluation ===")
-    
-    print("\nPeak Market Cap Metrics:")
-    print(f"Mean Absolute Error: {metrics['percent_increase']['mae']:.4f} SOL")
+    print("\n=== Percent Increase Model Performance Evaluation ===")
+    print(f"Mean Absolute Error: {metrics['percent_increase']['mae']:.4f}%")
     print(f"Mean Squared Error: {metrics['percent_increase']['mse']:.4f}")
-    print(f"Root Mean Squared Error: {metrics['percent_increase']['rmse']:.4f} SOL")
+    print(f"Root Mean Squared Error: {metrics['percent_increase']['rmse']:.4f}%")
     print(f"R² Score: {metrics['percent_increase']['r2']:.4f}")
 
     return {
         'metrics': metrics,
         'predictions': {
-            'peak_market_cap_predictions': peak_market_cap_predictions,
-            'true_peak_market_cap': true_peak_market_cap
+            'percent_increase_predictions': percent_increase_predictions,
+            'true_percent_increase': true_percent_increase
         },
         'datasets': {
             'train_dataset': train_dataset,
@@ -159,15 +144,8 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
         'model': peak_market_cap_model
     }
 
-
-
-
-
-
-
-# Usage
 if __name__ == "__main__":
     evaluate_peak_market_cap_model(
-         'best_peak_market_cap_model.pth',
-       ['data/token-data-percent.csv']
+        'best_peak_market_cap_model.pth',
+        ['data/token-data-percent.csv']
     )
