@@ -504,15 +504,15 @@ class TradingSimulator:
             with torch.no_grad():
                 try:
                     # Extract global features for Before30 model
-                    before30_global_features = np.array([[
-                        token_data['initial_investment_ratio'],
-                        token_data['initial_market_cap'],
-                        token_data['volume_pressure'],
-                        token_data['buy_sell_ratio'],
-                        features['price_volatility_0to30s'],
-                        features['volume_volatility_0to30s'],
-                        features['momentum_0to30s']
-                    ]])
+                    before30_global_features = np.array([
+                        features['global'][0, 0],  # initial_investment_ratio
+                        features['global'][0, 1],  # initial_market_cap 
+                        features['global'][0, 2],  # volume_pressure
+                        features['global'][0, 3],  # buy_sell_ratio
+                        features['data']['30s'][0, -1, 4],  # price_volatility from last 30s window
+                        features['data']['30s'][0, -1, 5],  # volume_volatility from last 30s window
+                        features['data']['30s'][0, -1, 6]   # momentum from last 30s window
+                    ])
                     
                     global_features_before30 = torch.FloatTensor(before30_global_features).to(self.device)
                     
@@ -537,33 +537,40 @@ class TradingSimulator:
                         self.logger.info(f"\n{'='*50}")
                         self.logger.info(f"PREDICTION - Token: {token_mint}")
                         self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
-                        self.logger.info("Token hasn't peaked - Running percent increase model...")
+                        self.logger.info("Token hasn't peaked - Running percent_increase model...")
                         
-                        market_cap_global_features = np.array([[
-                            token_data['initial_investment_ratio'],
-                            token_data['initial_market_cap'],
-                            token_data['volume_pressure'],
-                            token_data['buy_sell_ratio'],
-                            features['price_volatility_0to30s']
-                        ]])
+                        # Extract global features for Market Cap model (5 features)
+                        market_cap_global_features = np.array([
+                            features['global'][0, 0],  # initial_investment_ratio
+                            features['global'][0, 1],  # initial_market_cap
+                            features['global'][0, 2],  # volume_pressure
+                            features['global'][0, 3],  # buy_sell_ratio
+                            features['global'][0, 4]   # creation_time_numeric
+                        ])
                         
                         global_features_market_cap = torch.FloatTensor(market_cap_global_features).to(self.device)
                         
-                        increase_pred = self.peak_market_cap_model(
+                        # Predict percent increase
+                        percent_increase_pred = self.peak_market_cap_model(
                             x_5s, x_10s, x_20s, x_30s,
                             global_features_market_cap, quality_features
                         )
                         
-                        # Get the predicted percent increase
-                        predicted_increase = self.market_cap_target_scaler.inverse_transform(
-                            increase_pred.cpu().numpy().reshape(1, -1)
-                        )[0][0]
+                        # Convert prediction to percentage
+                        percent_increase = percent_increase_pred.item()
                         
-                        if predicted_increase > 20:  # Only enter if predicted increase is > 20%
-                            token_data['predicted_increase'] = predicted_increase
-                            current_mcap = token_data['current_market_cap']
+                        # Calculate target sell price (10% below the predicted increase)
+                        current_mcap = token_data['current_market_cap']
+                        target_increase = percent_increase - 10  # Sell at 10% below the predicted increase
+                        target_sell_price = current_mcap * (1 + target_increase / 100)
+                        
+                        if target_increase > 20:  # Only enter if the predicted increase is significant
+                            token_data['predicted_increase'] = percent_increase
+                            token_data['target_sell_price'] = target_sell_price
+                            
                             self.logger.info(f"Current Market Cap: {current_mcap:.4f}")
-                            self.logger.info(f"Predicted Increase: {predicted_increase:.2f}%")
+                            self.logger.info(f"Predicted Increase: {percent_increase:.2f}%")
+                            self.logger.info(f"Target Sell Price: {target_sell_price:.4f}")
                             self.logger.info("Sufficient upside potential - Will enter trade")
                             self.logger.info(f"{'='*50}\n")
                             return True
@@ -578,7 +585,6 @@ class TradingSimulator:
             self.logger.error(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
             return False
 
-
     def _update_trailing_stop(self, token_data, current_price):
         """Update trailing stop values based on current price"""
         # Update highest price if we have a new high
@@ -588,63 +594,58 @@ class TradingSimulator:
             token_data['trailing_stop_price'] = current_price * 0.85
 
     def handle_transaction(self, transaction):
-        """Handle incoming transaction data"""
-        try:
-            mint = transaction['mint']
-            current_time = datetime.now()
-            
-            # Initialize token data if new
-            if mint not in self.active_tokens:
-                self.active_tokens[mint] = self._initialize_token_data(transaction)
-            
-            token_data = self.active_tokens[mint]
-            
-            # Update token data
-            if not token_data['first_trade_time']:
-                token_data['first_trade_time'] = current_time
-                token_data['initial_market_cap'] = transaction['marketCapSol']
-            
-            token_data['transactions'].append({
-                'timestamp': current_time,
-                **transaction
-            })
-            current_price = transaction['marketCapSol']
-            token_data['current_market_cap'] = current_price
-            
-            # Update metrics
-            total_transactions = len(token_data['transactions'])
-            buy_transactions = sum(1 for tx in token_data['transactions'] if tx['txType'] == 'buy')
-            token_data['buy_sell_ratio'] = buy_transactions / total_transactions if total_transactions > 0 else 0.0
-            
-            total_volume = sum(tx['solAmount'] for tx in token_data['transactions'])
-            token_data['volume_pressure'] = total_volume / (token_data['initial_market_cap'] + 1e-8)
-            
-            # Trading logic
-            if token_data['trade_status'] == 'monitoring':
-                time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
-                
-                # Make prediction only once after 30 seconds
-                if time_since_first >= 30 and not token_data['prediction_made']:
-                    token_data['prediction_made'] = True  # Mark that we've made a prediction
-                    if self._should_enter_trade(mint):
-                        self._execute_trade(mint, 'buy')
-                        
-            elif token_data['trade_status'] == 'bought':
-                # Update trailing stop if we're in a position
-                self._update_trailing_stop(token_data, current_price)
-                
-                # Calculate current increase
-                current_increase = ((current_price - token_data['entry_price']) / token_data['entry_price'] * 100)
-                target_increase = token_data['predicted_increase'] * 0.9  # 90% of predicted increase
-                
-                # Check exit conditions
-                if (current_increase >= target_increase or 
-                    current_price <= token_data['trailing_stop_price']):
-                    self._execute_trade(mint, 'sell')
-                    
-        except Exception as e:
-            self.logger.error(f"Error in handle_transaction: {e}")
-
+      """Handle incoming transaction data"""
+      try:
+          mint = transaction['mint']
+          current_time = datetime.now()
+          
+          # Initialize token data if new
+          if mint not in self.active_tokens:
+              self.active_tokens[mint] = self._initialize_token_data(transaction)
+          
+          token_data = self.active_tokens[mint]
+          
+          # Update token data
+          if not token_data['first_trade_time']:
+              token_data['first_trade_time'] = current_time
+              token_data['initial_market_cap'] = transaction['marketCapSol']
+          
+          token_data['transactions'].append({
+              'timestamp': current_time,
+              **transaction
+          })
+          current_price = transaction['marketCapSol']
+          token_data['current_market_cap'] = current_price
+          
+          # Update metrics
+          total_transactions = len(token_data['transactions'])
+          buy_transactions = sum(1 for tx in token_data['transactions'] if tx['txType'] == 'buy')
+          token_data['buy_sell_ratio'] = buy_transactions / total_transactions if total_transactions > 0 else 0.0
+          
+          total_volume = sum(tx['solAmount'] for tx in token_data['transactions'])
+          token_data['volume_pressure'] = total_volume / (token_data['initial_market_cap'] + 1e-8)
+          
+          # Trading logic
+          if token_data['trade_status'] == 'monitoring':
+              time_since_first = (current_time - token_data['first_trade_time']).total_seconds()
+              
+              # Make prediction only once after 30 seconds
+              if time_since_first >= 30 and not token_data['prediction_made']:
+                  token_data['prediction_made'] = True  # Mark that we've made a prediction
+                  if self._should_enter_trade(mint):
+                      self._execute_trade(mint, 'buy')
+                      
+          elif token_data['trade_status'] == 'bought':
+              # Update trailing stop if we're in a position
+              self._update_trailing_stop(token_data, current_price)
+              
+              # Check exit conditions
+              if (current_price >= token_data['predicted_peak'] or 
+                  current_price <= token_data['trailing_stop_price']):
+                  self._execute_trade(mint, 'sell')
+                  
+      except Exception as e:
+          self.logger.error(f"Error in handle_transaction: {e}")
 
     def _write_trade_to_file(self, trade_data):
         """Write trade details to the PnL file with error handling"""
@@ -656,16 +657,16 @@ class TradingSimulator:
             if not os.path.exists(filename):
                 headers = [
                     "timestamp", "token", "action", "entry_price", "exit_price",
-                    "position_size", "profit_loss", "hold_time", "predicted_peak",
-                    "running_total_pnl", "win_rate"
+                    "position_size", "profit_loss", "hold_time", "predicted_increase",
+                    "target_sell_price", "running_total_pnl", "win_rate"
                 ]
                 with open(filename, 'w') as f:
                     f.write(','.join(headers) + '\n')
             
             # Calculate running metrics
             win_rate = (self.trading_metrics['successful_trades'] / 
-                       self.trading_metrics['total_trades'] * 100) \
-                      if self.trading_metrics['total_trades'] > 0 else 0
+                    self.trading_metrics['total_trades'] * 100) \
+                    if self.trading_metrics['total_trades'] > 0 else 0
                     
             # Write trade data
             with open(filename, 'a') as f:
@@ -678,7 +679,8 @@ class TradingSimulator:
                     f"{trade_data.get('position_size', '')}",
                     f"{trade_data.get('profit_loss', '')}",
                     f"{trade_data.get('hold_time', '')}",
-                    f"{trade_data.get('predicted_peak', '')}",
+                    f"{trade_data.get('predicted_increase', '')}",
+                    f"{trade_data.get('target_sell_price', '')}",
                     f"{self.trading_metrics['total_profit_loss']}",
                     f"{win_rate:.2f}"
                 ]
@@ -706,7 +708,8 @@ class TradingSimulator:
                     'action': 'buy',
                     'entry_price': current_price,
                     'position_size': token_data['position_size'],
-                    'predicted_increase': token_data['predicted_increase']
+                    'predicted_increase': token_data['predicted_increase'],
+                    'target_sell_price': token_data['target_sell_price']
                 }
                 
                 self.logger.info(f"\n{'='*50}")
@@ -714,6 +717,7 @@ class TradingSimulator:
                 self.logger.info(f"Token: {token_mint}")
                 self.logger.info(f"Entry Price: {current_price:.4f}")
                 self.logger.info(f"Predicted Increase: {token_data['predicted_increase']:.2f}%")
+                self.logger.info(f"Target Sell Price: {token_data['target_sell_price']:.4f}")
                 self.logger.info(f"Initial Stop: {token_data['trailing_stop_price']:.4f}")
                 self.logger.info(f"{'='*50}\n")
                 
@@ -725,7 +729,6 @@ class TradingSimulator:
                 if token_mint in self.positions:
                     entry_price = token_data['entry_price']
                     position_size = token_data['position_size']
-                    current_increase = ((current_price - entry_price) / entry_price * 100)
                     profit_loss = (current_price - entry_price) * position_size
                     hold_time = (datetime.now() - token_data['first_trade_time']).total_seconds()
                     
@@ -734,9 +737,8 @@ class TradingSimulator:
                         self.trading_metrics['successful_trades'] += 1
                     self.trading_metrics['total_profit_loss'] += profit_loss
                     
-                    # Determine if we hit target (90% of predicted) or trailing stop
-                    target_increase = token_data['predicted_increase'] * 0.9
-                    exit_reason = "Target Increase" if current_increase >= target_increase else "Trailing Stop"
+                    # Determine exit reason
+                    exit_reason = "Target Price" if current_price >= token_data['target_sell_price'] else "Trailing Stop"
                     
                     trade_data = {
                         'token': token_mint,
@@ -747,7 +749,7 @@ class TradingSimulator:
                         'profit_loss': profit_loss,
                         'hold_time': hold_time,
                         'predicted_increase': token_data['predicted_increase'],
-                        'actual_increase': current_increase,
+                        'target_sell_price': token_data['target_sell_price'],
                         'highest_reached': token_data['highest_since_entry']
                     }
                     
@@ -756,8 +758,6 @@ class TradingSimulator:
                     self.logger.info(f"Token: {token_mint}")
                     self.logger.info(f"Entry: {entry_price:.4f}")
                     self.logger.info(f"Exit: {current_price:.4f}")
-                    self.logger.info(f"Predicted Increase: {token_data['predicted_increase']:.2f}%")
-                    self.logger.info(f"Actual Increase: {current_increase:.2f}%")
                     self.logger.info(f"Highest: {token_data['highest_since_entry']:.4f}")
                     self.logger.info(f"P/L: {profit_loss:.4f}")
                     self.logger.info(f"Hold Time: {hold_time:.2f}s")
@@ -774,8 +774,6 @@ class TradingSimulator:
                         'profit_loss': profit_loss,
                         'hold_time': hold_time,
                         'exit_reason': exit_reason,
-                        'predicted_increase': token_data['predicted_increase'],
-                        'actual_increase': current_increase,
                         'highest_reached': token_data['highest_since_entry']
                     })
                     
@@ -813,7 +811,8 @@ class TradingSimulator:
             }),
             'current_market_cap': None,
             'initial_market_cap': None,
-            'predicted_increase': None,  # Changed this
+            'predicted_increase': None,  # New field for predicted percent increase
+            'target_sell_price': None,   # New field for target sell price
             'entry_price': None,
             'position_size': 0,
             'trade_status': 'monitoring',
@@ -822,7 +821,7 @@ class TradingSimulator:
             'volume_pressure': 0.0,
             'highest_since_entry': 0,
             'trailing_stop_price': 0,
-            'prediction_made': False
+            'prediction_made': False  # Add flag to track if prediction has been made
         }
 
     def _calculate_quality_features(self, features):
