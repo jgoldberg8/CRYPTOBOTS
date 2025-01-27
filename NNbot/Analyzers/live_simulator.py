@@ -487,103 +487,101 @@ class TradingSimulator:
           return None  
 
     def _should_enter_trade(self, token_mint):
-        """Determine if we should enter a trade based on model predictions"""
-        try:
-            token_data = self.active_tokens[token_mint]
-            
-            # Ensure minimum transactions
-            if len(token_data['transactions']) < 5:
-                return False
-                
-            # Calculate features
-            features = self._calculate_features(token_data)
-            if features is None:
-                return False
+      """Determine if we should enter a trade based on model predictions"""
+      try:
+          token_data = self.active_tokens[token_mint]
+          
+          # Ensure minimum transactions
+          if len(token_data['transactions']) < 5:
+              return False
+              
+          # Calculate features
+          features = self._calculate_features(token_data)
+          if features is None:
+              return False
 
-            # Make predictions with error handling
-            with torch.no_grad():
-                try:
-                    # Extract global features for Before30 model
-                    before30_global_features = np.array([
-                        features['global'][0, 0],  # initial_investment_ratio
-                        features['global'][0, 1],  # initial_market_cap 
-                        features['global'][0, 2],  # volume_pressure
-                        features['global'][0, 3],  # buy_sell_ratio
-                        features['data']['30s'][0, -1, 4],  # price_volatility from last 30s window
-                        features['data']['30s'][0, -1, 5],  # volume_volatility from last 30s window
-                        features['data']['30s'][0, -1, 6]   # momentum from last 30s window
-                    ])
-                    
-                    global_features_before30 = torch.FloatTensor(before30_global_features).to(self.device)
-                    
-                    # Quality features
-                    quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
-                    
-                    # Prepare model inputs
-                    x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
-                    x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
-                    x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
-                    x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
-                    
-                    peak_before_30_pred = self.peak_before_30_model(
-                        x_5s, x_10s, x_20s, x_30s,
-                        global_features_before30, quality_features
-                    )
-                    
-                    # Convert to probability
-                    prob_peaked = torch.sigmoid(peak_before_30_pred).item()
-                    
-                    if prob_peaked < 0.5:  # Only proceed with logging if hasn't peaked
-                        self.logger.info(f"\n{'='*50}")
-                        self.logger.info(f"PREDICTION - Token: {token_mint}")
-                        self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
-                        self.logger.info("Token hasn't peaked - Running percent_increase model...")
-                        
-                        # Extract global features for Market Cap model (5 features)
-                        market_cap_global_features = np.array([
-                            features['global'][0, 0],  # initial_investment_ratio
-                            features['global'][0, 1],  # initial_market_cap
-                            features['global'][0, 2],  # volume_pressure
-                            features['global'][0, 3],  # buy_sell_ratio
-                            features['global'][0, 4]   # creation_time_numeric
-                        ])
-                        
-                        global_features_market_cap = torch.FloatTensor(market_cap_global_features).to(self.device)
-                        
-                        # Predict percent increase
-                        percent_increase_pred = self.peak_market_cap_model(
-                            x_5s, x_10s, x_20s, x_30s,
-                            global_features_market_cap, quality_features
-                        )
-                        
-                        # Convert prediction to percentage
-                        percent_increase = percent_increase_pred.item()
-                        
-                        # Calculate target sell price (10% below the predicted increase)
-                        current_mcap = token_data['current_market_cap']
-                        target_increase = percent_increase - 10  # Sell at 10% below the predicted increase
-                        target_sell_price = current_mcap * (1 + target_increase / 100)
-                        
-                        if target_increase > 20:  # Only enter if the predicted increase is significant
-                            token_data['predicted_increase'] = percent_increase
-                            token_data['target_sell_price'] = target_sell_price
-                            
-                            self.logger.info(f"Current Market Cap: {current_mcap:.4f}")
-                            self.logger.info(f"Predicted Increase: {percent_increase:.2f}%")
-                            self.logger.info(f"Target Sell Price: {target_sell_price:.4f}")
-                            self.logger.info("Sufficient upside potential - Will enter trade")
-                            self.logger.info(f"{'='*50}\n")
-                            return True
-                            
-                    return False
-                        
-                except Exception as e:
-                    self.logger.error(f"Error in model prediction: {e}")
-                    return False
-                    
-        except Exception as e:
-            self.logger.error(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
-            return False
+          # Make predictions with error handling
+          with torch.no_grad():
+              try:
+                  # Extract global features for Before30 model
+                  before30_global_features = np.array([[
+                      features['global'][0, 0],  # initial_investment_ratio
+                      features['global'][0, 1],  # initial_market_cap 
+                      features['global'][0, 2],  # volume_pressure
+                      features['global'][0, 3],  # buy_sell_ratio
+                      features['data']['30s'][0, -1, 4],  # price_volatility from last 30s window
+                      features['data']['30s'][0, -1, 5],  # volume_volatility from last 30s window
+                      features['data']['30s'][0, -1, 6]   # momentum from last 30s window
+                  ]])
+                  
+                  global_features_before30 = torch.FloatTensor(before30_global_features).to(self.device)
+                  
+                  # Quality features
+                  quality_features = torch.FloatTensor(self._calculate_quality_features(features)).to(self.device)
+                  
+                  # Prepare model inputs
+                  x_5s = torch.FloatTensor(features['data']['5s']).to(self.device)
+                  x_10s = torch.FloatTensor(features['data']['10s']).to(self.device)
+                  x_20s = torch.FloatTensor(features['data']['20s']).to(self.device)
+                  x_30s = torch.FloatTensor(features['data']['30s']).to(self.device)
+                  
+                  peak_before_30_pred = self.peak_before_30_model(
+                      x_5s, x_10s, x_20s, x_30s,
+                      global_features_before30, quality_features
+                  )
+                  
+                  # Convert to probability
+                  prob_peaked = torch.sigmoid(peak_before_30_pred).item()
+                  
+                  if prob_peaked < 0.5:  # Only proceed with logging if hasn't peaked
+                      self.logger.info(f"\n{'='*50}")
+                      self.logger.info(f"PREDICTION - Token: {token_mint}")
+                      self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
+                      self.logger.info("Token hasn't peaked - Running peak_market_cap model...")
+                      
+                      # Extract global features for Market Cap model (5 features)
+                      market_cap_global_features = np.array([[
+                          features['global'][0, 0],  # initial_investment_ratio
+                          features['global'][0, 1],  # initial_market_cap
+                          features['global'][0, 2],  # volume_pressure
+                          features['global'][0, 3],  # buy_sell_ratio
+                          features['global'][0, 4]   # creation_time_numeric
+                      ]])
+                      
+                      global_features_market_cap = torch.FloatTensor(market_cap_global_features).to(self.device)
+                      
+                      peak_pred = self.peak_market_cap_model(
+                          x_5s, x_10s, x_20s, x_30s,
+                          global_features_market_cap, quality_features
+                      )
+                      
+                      current_mcap = token_data['current_market_cap']
+                      final_pred = self._scale_prediction(peak_pred, current_mcap)
+                      
+                      if final_pred is None:
+                          return False
+                          
+                      potential_upside = ((final_pred/current_mcap - 1) * 100)
+                      
+                      if potential_upside > 20:
+                          token_data['predicted_peak'] = final_pred
+                          self.logger.info(f"Current Market Cap: {current_mcap:.4f}")
+                          self.logger.info(f"Predicted Peak: {final_pred:.4f}")
+                          self.logger.info(f"Potential Upside: {potential_upside:.2f}%")
+                          self.logger.info("Sufficient upside potential - Will enter trade")
+                          self.logger.info(f"{'='*50}\n")
+                          return True
+                          
+                  return False
+                      
+              except Exception as e:
+                  self.logger.error(f"Error in model prediction: {e}")
+                  return False
+                  
+      except Exception as e:
+          self.logger.error(f"Error in _should_enter_trade for {token_mint}: {str(e)}")
+          return False
+
 
     def _update_trailing_stop(self, token_data, current_price):
         """Update trailing stop values based on current price"""
@@ -657,16 +655,16 @@ class TradingSimulator:
             if not os.path.exists(filename):
                 headers = [
                     "timestamp", "token", "action", "entry_price", "exit_price",
-                    "position_size", "profit_loss", "hold_time", "predicted_increase",
-                    "target_sell_price", "running_total_pnl", "win_rate"
+                    "position_size", "profit_loss", "hold_time", "predicted_peak",
+                    "running_total_pnl", "win_rate"
                 ]
                 with open(filename, 'w') as f:
                     f.write(','.join(headers) + '\n')
             
             # Calculate running metrics
             win_rate = (self.trading_metrics['successful_trades'] / 
-                    self.trading_metrics['total_trades'] * 100) \
-                    if self.trading_metrics['total_trades'] > 0 else 0
+                       self.trading_metrics['total_trades'] * 100) \
+                      if self.trading_metrics['total_trades'] > 0 else 0
                     
             # Write trade data
             with open(filename, 'a') as f:
@@ -679,8 +677,7 @@ class TradingSimulator:
                     f"{trade_data.get('position_size', '')}",
                     f"{trade_data.get('profit_loss', '')}",
                     f"{trade_data.get('hold_time', '')}",
-                    f"{trade_data.get('predicted_increase', '')}",
-                    f"{trade_data.get('target_sell_price', '')}",
+                    f"{trade_data.get('predicted_peak', '')}",
                     f"{self.trading_metrics['total_profit_loss']}",
                     f"{win_rate:.2f}"
                 ]
@@ -690,139 +687,136 @@ class TradingSimulator:
             self.logger.error(f"Error writing trade to file: {e}")
 
     def _execute_trade(self, token_mint, action, amount=None):
-        """Simulate executing a trade"""
-        try:
-            token_data = self.active_tokens[token_mint]
-            current_price = token_data['current_market_cap']
-            
-            if action == 'buy':
-                # Simulate buying
-                token_data['entry_price'] = current_price
-                token_data['position_size'] = amount or 1.0
-                token_data['trade_status'] = 'bought'
-                token_data['highest_since_entry'] = current_price
-                token_data['trailing_stop_price'] = current_price * 0.85  # Initial trailing stop
-                
-                trade_data = {
-                    'token': token_mint,
-                    'action': 'buy',
-                    'entry_price': current_price,
-                    'position_size': token_data['position_size'],
-                    'predicted_increase': token_data['predicted_increase'],
-                    'target_sell_price': token_data['target_sell_price']
-                }
-                
-                self.logger.info(f"\n{'='*50}")
-                self.logger.info(f"NEW TRADE - BUY")
-                self.logger.info(f"Token: {token_mint}")
-                self.logger.info(f"Entry Price: {current_price:.4f}")
-                self.logger.info(f"Predicted Increase: {token_data['predicted_increase']:.2f}%")
-                self.logger.info(f"Target Sell Price: {token_data['target_sell_price']:.4f}")
-                self.logger.info(f"Initial Stop: {token_data['trailing_stop_price']:.4f}")
-                self.logger.info(f"{'='*50}\n")
-                
-                self._write_trade_to_file(trade_data)
-                self.positions[token_mint] = token_data
-                
-            elif action == 'sell':
-                # Calculate profit/loss
-                if token_mint in self.positions:
-                    entry_price = token_data['entry_price']
-                    position_size = token_data['position_size']
-                    profit_loss = (current_price - entry_price) * position_size
-                    hold_time = (datetime.now() - token_data['first_trade_time']).total_seconds()
-                    
-                    self.trading_metrics['total_trades'] += 1
-                    if profit_loss > 0:
-                        self.trading_metrics['successful_trades'] += 1
-                    self.trading_metrics['total_profit_loss'] += profit_loss
-                    
-                    # Determine exit reason
-                    exit_reason = "Target Price" if current_price >= token_data['target_sell_price'] else "Trailing Stop"
-                    
-                    trade_data = {
-                        'token': token_mint,
-                        'action': 'sell',
-                        'entry_price': entry_price,
-                        'exit_price': current_price,
-                        'position_size': position_size,
-                        'profit_loss': profit_loss,
-                        'hold_time': hold_time,
-                        'predicted_increase': token_data['predicted_increase'],
-                        'target_sell_price': token_data['target_sell_price'],
-                        'highest_reached': token_data['highest_since_entry']
-                    }
-                    
-                    self.logger.info(f"\n{'='*50}")
-                    self.logger.info(f"TRADE CLOSED - {exit_reason}")
-                    self.logger.info(f"Token: {token_mint}")
-                    self.logger.info(f"Entry: {entry_price:.4f}")
-                    self.logger.info(f"Exit: {current_price:.4f}")
-                    self.logger.info(f"Highest: {token_data['highest_since_entry']:.4f}")
-                    self.logger.info(f"P/L: {profit_loss:.4f}")
-                    self.logger.info(f"Hold Time: {hold_time:.2f}s")
-                    self.logger.info(f"Running Total P/L: {self.trading_metrics['total_profit_loss']:.4f}")
-                    self.logger.info(f"{'='*50}\n")
-                    
-                    self._write_trade_to_file(trade_data)
-                    
-                    # Record trade details
-                    self.trading_metrics['positions'].append({
-                        'token': token_mint,
-                        'entry_price': entry_price,
-                        'exit_price': current_price,
-                        'profit_loss': profit_loss,
-                        'hold_time': hold_time,
-                        'exit_reason': exit_reason,
-                        'highest_reached': token_data['highest_since_entry']
-                    })
-                    
-                    # Clean up
-                    del self.positions[token_mint]
-                    token_data['trade_status'] = 'sold'
-                    
-        except Exception as e:
-            self.logger.error(f"Error executing trade: {e}")
+      """Simulate executing a trade"""
+      try:
+          token_data = self.active_tokens[token_mint]
+          current_price = token_data['current_market_cap']
+          
+          if action == 'buy':
+              # Simulate buying
+              token_data['entry_price'] = current_price
+              token_data['position_size'] = amount or 1.0
+              token_data['trade_status'] = 'bought'
+              token_data['highest_since_entry'] = current_price
+              token_data['trailing_stop_price'] = current_price * 0.85  # Initial trailing stop
+              
+              trade_data = {
+                  'token': token_mint,
+                  'action': 'buy',
+                  'entry_price': current_price,
+                  'position_size': token_data['position_size'],
+                  'predicted_peak': token_data['predicted_peak']
+              }
+              
+              self.logger.info(f"\n{'='*50}")
+              self.logger.info(f"NEW TRADE - BUY")
+              self.logger.info(f"Token: {token_mint}")
+              self.logger.info(f"Entry Price: {current_price:.4f}")
+              self.logger.info(f"Predicted Peak: {token_data['predicted_peak']:.4f}")
+              self.logger.info(f"Initial Stop: {token_data['trailing_stop_price']:.4f}")
+              self.logger.info(f"{'='*50}\n")
+              
+              self._write_trade_to_file(trade_data)
+              self.positions[token_mint] = token_data
+              
+          elif action == 'sell':
+              # Calculate profit/loss
+              if token_mint in self.positions:
+                  entry_price = token_data['entry_price']
+                  position_size = token_data['position_size']
+                  profit_loss = (current_price - entry_price) * position_size
+                  hold_time = (datetime.now() - token_data['first_trade_time']).total_seconds()
+                  
+                  self.trading_metrics['total_trades'] += 1
+                  if profit_loss > 0:
+                      self.trading_metrics['successful_trades'] += 1
+                  self.trading_metrics['total_profit_loss'] += profit_loss
+                  
+                  # Determine exit reason
+                  exit_reason = "Peak Target" if current_price >= token_data['predicted_peak'] else "Trailing Stop"
+                  
+                  trade_data = {
+                      'token': token_mint,
+                      'action': 'sell',
+                      'entry_price': entry_price,
+                      'exit_price': current_price,
+                      'position_size': position_size,
+                      'profit_loss': profit_loss,
+                      'hold_time': hold_time,
+                      'predicted_peak': token_data['predicted_peak'],
+                      'highest_reached': token_data['highest_since_entry']
+                  }
+                  
+                  self.logger.info(f"\n{'='*50}")
+                  self.logger.info(f"TRADE CLOSED - {exit_reason}")
+                  self.logger.info(f"Token: {token_mint}")
+                  self.logger.info(f"Entry: {entry_price:.4f}")
+                  self.logger.info(f"Exit: {current_price:.4f}")
+                  self.logger.info(f"Highest: {token_data['highest_since_entry']:.4f}")
+                  self.logger.info(f"P/L: {profit_loss:.4f}")
+                  self.logger.info(f"Hold Time: {hold_time:.2f}s")
+                  self.logger.info(f"Running Total P/L: {self.trading_metrics['total_profit_loss']:.4f}")
+                  self.logger.info(f"{'='*50}\n")
+                  
+                  self._write_trade_to_file(trade_data)
+                  
+                  # Record trade details
+                  self.trading_metrics['positions'].append({
+                      'token': token_mint,
+                      'entry_price': entry_price,
+                      'exit_price': current_price,
+                      'profit_loss': profit_loss,
+                      'hold_time': hold_time,
+                      'exit_reason': exit_reason,
+                      'highest_reached': token_data['highest_since_entry']
+                  })
+                  
+                  # Clean up
+                  del self.positions[token_mint]
+                  token_data['trade_status'] = 'sold'
+                  
+      except Exception as e:
+          self.logger.error(f"Error executing trade: {e}")
 
     def _initialize_token_data(self, token_data):
-        """Initialize data structure for tracking a new token"""
-        creation_time = None
-        if 'timestamp' in token_data:
-            try:
-                creation_time = pd.to_datetime(token_data['timestamp'])
-            except:
-                creation_time = datetime.now()
-        else:
-            creation_time = datetime.now()
+      """Initialize data structure for tracking a new token"""
+      creation_time = None
+      if 'timestamp' in token_data:
+          try:
+              creation_time = pd.to_datetime(token_data['timestamp'])
+          except:
+              creation_time = datetime.now()
+      else:
+          creation_time = datetime.now()
 
-        return {
-            'details': token_data,
-            'creation_time': creation_time,
-            'first_trade_time': None,
-            'transactions': [],
-            'metrics': defaultdict(lambda: {
-                'transaction_count': 0,
-                'buy_count': 0,
-                'volume': 0,
-                'prices': [],
-                'volumes': [],
-                'trade_amounts': [],
-                'unique_wallets': set()
-            }),
-            'current_market_cap': None,
-            'initial_market_cap': None,
-            'predicted_increase': None,  # New field for predicted percent increase
-            'target_sell_price': None,   # New field for target sell price
-            'entry_price': None,
-            'position_size': 0,
-            'trade_status': 'monitoring',
-            'initial_investment_ratio': 1.0,
-            'buy_sell_ratio': 0.0,
-            'volume_pressure': 0.0,
-            'highest_since_entry': 0,
-            'trailing_stop_price': 0,
-            'prediction_made': False  # Add flag to track if prediction has been made
-        }
+      return {
+          'details': token_data,
+          'creation_time': creation_time,
+          'first_trade_time': None,
+          'transactions': [],
+          'metrics': defaultdict(lambda: {
+              'transaction_count': 0,
+              'buy_count': 0,
+              'volume': 0,
+              'prices': [],
+              'volumes': [],
+              'trade_amounts': [],
+              'unique_wallets': set()
+          }),
+          'current_market_cap': None,
+          'initial_market_cap': None,
+          'peak_market_cap': 0,
+          'predicted_peak': None,
+          'entry_price': None,
+          'position_size': 0,
+          'trade_status': 'monitoring',
+          'initial_investment_ratio': 1.0,
+          'buy_sell_ratio': 0.0,
+          'volume_pressure': 0.0,
+          'highest_since_entry': 0,
+          'trailing_stop_price': 0,
+          'prediction_made': False  # Add flag to track if prediction has been made
+      }
 
     def _calculate_quality_features(self, features):
         """Calculate data quality features"""
