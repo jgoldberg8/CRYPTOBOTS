@@ -30,7 +30,7 @@ def clean_dataset(df):
         'time_to_peak'
     ]
     df = df.dropna(subset=critical_cols)
-    #df = df[df['time_to_peak'] > 30]
+    df = df[df['time_to_peak'] > 30]
     df = df[df['time_to_peak'] < 1020]
     
     # Identify different feature types
