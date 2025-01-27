@@ -27,7 +27,7 @@ def clean_dataset(df):
         'transaction_count_0to10s',
         'initial_market_cap',
         'peak_market_cap',
-        'percent_increase'
+        'percent_increase',
         'time_to_peak'
     ]
     df = df.dropna(subset=critical_cols)
