@@ -99,7 +99,7 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
 
     # Calculate metrics on actual values
     metrics = {
-        'peak_market_cap': {
+        'percent_increase': {
             'mae': mean_absolute_error(true_peak_market_cap, peak_market_cap_predictions),
             'mse': mean_squared_error(true_peak_market_cap, peak_market_cap_predictions),
             'rmse': np.sqrt(mean_squared_error(true_peak_market_cap, peak_market_cap_predictions)),
@@ -120,7 +120,7 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     plt.title('Peak Market Cap: Predicted vs True')
     plt.xlabel('True Values (SOL)')
     plt.ylabel('Predicted Values (SOL)')
-    plt.text(0.05, 0.95, f'R² = {metrics["peak_market_cap"]["r2"]:.4f}',
+    plt.text(0.05, 0.95, f'R² = {metrics["percent_increase"]["r2"]:.4f}',
              transform=plt.gca().transAxes, fontsize=10)
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -137,10 +137,10 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     print("\n=== Peak Market Cap Model Performance Evaluation ===")
     
     print("\nPeak Market Cap Metrics:")
-    print(f"Mean Absolute Error: {metrics['peak_market_cap']['mae']:.4f} SOL")
-    print(f"Mean Squared Error: {metrics['peak_market_cap']['mse']:.4f}")
-    print(f"Root Mean Squared Error: {metrics['peak_market_cap']['rmse']:.4f} SOL")
-    print(f"R² Score: {metrics['peak_market_cap']['r2']:.4f}")
+    print(f"Mean Absolute Error: {metrics['percent_increase']['mae']:.4f} SOL")
+    print(f"Mean Squared Error: {metrics['percent_increase']['mse']:.4f}")
+    print(f"Root Mean Squared Error: {metrics['percent_increase']['rmse']:.4f} SOL")
+    print(f"R² Score: {metrics['percent_increase']['r2']:.4f}")
 
     return {
         'metrics': metrics,
@@ -169,5 +169,5 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
 if __name__ == "__main__":
     evaluate_peak_market_cap_model(
          'best_peak_market_cap_model.pth',
-       ['data/token-data.csv']
+       ['data/token-data-percent.csv']
     )
