@@ -164,12 +164,12 @@ class TokenDataset(Dataset):
 
     def _calculate_sample_weights(self, df):
         # Calculate range-specific weights
-        low_value_mask = df['percent_increase'] < df['percent_increase'].median() * 0.5
-        high_value_mask = df['percent_increase'] > df['percent_increase'].median() * 1.5
+        low_value_mask = df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5
+        high_value_mask = df['peak_market_cap'] > df['peak_market_cap'].median() * 1.5
         
         # Base weights from momentum and market cap
         momentum_weights = np.abs(df[[col for col in df.columns if 'momentum' in col]]).mean(axis=1)
-        market_cap_weights = df['percent_increase']
+        market_cap_weights = df['peak_market_cap']
         
         # Adjust weights by range
         range_multiplier = np.where(low_value_mask, 1.5,  # More emphasis on low values
@@ -181,7 +181,7 @@ class TokenDataset(Dataset):
 
     def _calculate_feature_importance(self, df):
         """Calculate feature importance scores"""
-        correlations = df.corr()['percent_increase'].abs()
+        correlations = df.corr()['peak_market_cap'].abs()
         return correlations / correlations.sum()
 
 

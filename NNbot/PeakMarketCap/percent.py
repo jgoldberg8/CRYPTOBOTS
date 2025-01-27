@@ -4,13 +4,8 @@ def add_percent_increase(df):
     """
     Add a percent increase column based on market cap change from initial to peak
     """
-    
-    # Calculate percent increase
+    # Calculate percent increase and keep as numeric
     df['percent_increase'] = ((df['peak_market_cap'] - df['initial_market_cap']) / df['initial_market_cap'] * 100).round(2)
-    
-    # Format as string with % symbol
-    df['percent_increase'] = df['percent_increase'].map('{:.2f}%'.format)
-    
     return df
 
 def process_file(input_path, output_path):

@@ -27,11 +27,10 @@ def clean_dataset(df):
         'transaction_count_0to10s',
         'initial_market_cap',
         'peak_market_cap',
-        'percent_increase',
         'time_to_peak'
     ]
     df = df.dropna(subset=critical_cols)
-    #df = df[df['time_to_peak'] > 0.5]
+    #df = df[df['time_to_peak'] > 30]
     df = df[df['time_to_peak'] < 1020]
     
     # Identify different feature types
@@ -54,15 +53,15 @@ def clean_dataset(df):
     temp_df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
     
     # Now add early-stage specific features using temp_df
-    new_features['early_stage_volume'] = np.where(df['percent_increase'] < df['percent_increase'].median() * 0.5,
+    new_features['early_stage_volume'] = np.where(df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5,
                                                 df['volume_0to10s'], 0)
-    new_features['early_momentum_intensity'] = np.where(df['percent_increase'] < df['percent_increase'].median() * 0.5,
+    new_features['early_momentum_intensity'] = np.where(df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5,
                                                       temp_df['momentum_magnitude'] * 1.5, temp_df['momentum_magnitude'])
     
     # Add initial growth rate features
     new_features['initial_growth_rate'] = (df['volume_5to10s'] - df['volume_0to5s']) / (df['volume_0to5s'] + 1e-8)
     new_features['early_pressure_indicator'] = temp_df['volume_pressure'] * temp_df['momentum_magnitude'] * \
-                                             (df['percent_increase'] < df['percent_increase'].median())
+                                             (df['peak_market_cap'] < df['peak_market_cap'].median())
     
     # Rest of your feature calculations...
     # Volume-based features
@@ -91,12 +90,12 @@ def clean_dataset(df):
     temp_df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
     
     # Add range-based features using the temporary DataFrame
-    quantiles = df['percent_increase'].quantile([0.25, 0.5, 0.75])
+    quantiles = df['peak_market_cap'].quantile([0.25, 0.5, 0.75])
     new_features['high_value_momentum'] = (temp_df['momentum_magnitude'] * 
-                                         (df['percent_increase'] > quantiles[0.75]).astype(float))
+                                         (df['peak_market_cap'] > quantiles[0.75]).astype(float))
     new_features['mid_value_momentum'] = (temp_df['momentum_magnitude'] * 
-                                        ((df['percent_increase'] > quantiles[0.25]) & 
-                                         (df['percent_increase'] <= quantiles[0.75])).astype(float))
+                                        ((df['peak_market_cap'] > quantiles[0.25]) & 
+                                         (df['peak_market_cap'] <= quantiles[0.75])).astype(float))
     
     # Add interaction features using the temporary DataFrame
     new_features['momentum_volume_interaction'] = temp_df['momentum_magnitude'] * temp_df['volume_pressure']
@@ -106,7 +105,7 @@ def clean_dataset(df):
     new_features['high_value_volume_momentum'] = new_features['high_value_momentum'] * temp_df['volume_pressure']
     new_features['mid_value_volume_momentum'] = new_features['mid_value_momentum'] * temp_df['volume_pressure']
     # Add to clean_dataset
-    new_features['high_value_indicator'] = (df['percent_increase'] > df['percent_increase'].median() * 1.5).astype(float)
+    new_features['high_value_indicator'] = (df['peak_market_cap'] > df['peak_market_cap'].median() * 1.5).astype(float)
     new_features['volume_high_value_interaction'] = new_features['volume_pressure'] * new_features['high_value_indicator']
     new_features['momentum_high_value_interaction'] = new_features['momentum_magnitude'] * new_features['high_value_indicator']
     
