@@ -440,7 +440,7 @@ class TradingSimulator:
             pred_numpy = peak_pred.cpu().numpy()
             raw_pred = pred_numpy.squeeze()
             
-            self.logger.info(f"Using raw model prediction: {raw_pred:.2f}%")
+            # self.logger.info(f"Using raw model prediction: {raw_pred:.2f}%")
             
             return raw_pred
             
@@ -538,10 +538,10 @@ class TradingSimulator:
                     prob_peaked = torch.sigmoid(peak_before_30_pred).item()
                     
                     if prob_peaked < 0.5:  # Only proceed if hasn't peaked
-                        self.logger.info(f"\n{'='*50}")
-                        self.logger.info(f"PREDICTION - Token: {token_mint}")
-                        self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
-                        self.logger.info("Token hasn't peaked - Running percent_increase model...")
+                        # self.logger.info(f"\n{'='*50}")
+                        # self.logger.info(f"PREDICTION - Token: {token_mint}")
+                        # self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
+                        # self.logger.info("Token hasn't peaked - Running percent_increase model...")
                         
                         # Extract global features for Market Cap model (5 features)
                         market_cap_global_features = np.array([[
@@ -562,7 +562,7 @@ class TradingSimulator:
                         
                         # Inverse transform the prediction
                         percent_increase = self._scale_prediction(percent_increase_pred, token_data['current_market_cap'])
-                        self.logger.info(f"Predicted percent increase: {percent_increase:.2f}%")
+                        # self.logger.info(f"Predicted percent increase: {percent_increase:.2f}%")
                         
                         # Calculate target sell price based on predicted increase
                         current_mcap = token_data['current_market_cap']
