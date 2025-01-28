@@ -284,6 +284,16 @@ class TradingSimulator:
                 ]])
                 features['global'] = market_cap_global_features
                 df['peak_market_cap'] = token_data['current_market_cap']
+                
+                # Use TokenDataset for market cap model
+                dataset = TokenDataset(
+                    df,
+                    scaler={
+                        'global': self.market_cap_global_scaler,
+                        'target': self.market_cap_target_scaler
+                    },
+                    train=False
+                )
             else:
                 # Global features for Before30 model (7 features)
                 before30_global_features = np.array([[
@@ -297,21 +307,16 @@ class TradingSimulator:
                 ]])
                 features['global'] = before30_global_features
 
-                self.logger.info(f"Global features shape: {features['global'].shape}")
-                self.logger.info(f"Global features content: {features['global']}")
+                # Use HitPeakBefore30Dataset for before30 model
+                dataset = HitPeakBefore30Dataset(
+                    df,
+                    scaler={
+                        'global': self.before30_global_scaler,
+                        'target': None  # No target scaler for before30 model
+                    },
+                    train=False
+                )
 
-                
-
-            # Create dataset with correct scalers
-            dataset = TokenDataset(
-                df,
-                scaler={
-                    'global': self.market_cap_global_scaler if is_peak_pred else self.before30_global_scaler,
-                    'target': self.market_cap_target_scaler if is_peak_pred else None
-                },
-                train=False
-            )
-            
             # Get preprocessed data
             processed_data = dataset._preprocess_data(df, fit=False)
             if processed_data is None:
