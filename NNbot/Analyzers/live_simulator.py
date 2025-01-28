@@ -439,31 +439,34 @@ class TradingSimulator:
             # Convert tensor prediction to numpy
             pred_numpy = peak_pred.cpu().numpy()
             
-            # Create dummy array matching evaluation format (n_samples, 2)
-            # Initialize with zeros since we only need the first column
-            dummy_predictions = np.zeros((1, 2))
-            dummy_predictions[:, 0] = pred_numpy.squeeze()
-            
             # Log raw prediction for debugging
-            self.logger.debug(f"Raw prediction before inverse transform: {pred_numpy.squeeze()}")
+            raw_pred = pred_numpy.squeeze()
+            self.logger.info(f"Raw model output: {raw_pred}")
             
-            # Inverse transform using the target scaler
-            transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_predictions)
+            # Create dummy array matching evaluation format (n_samples, 2)
+            dummy_predictions = np.zeros((1, 2))
+            dummy_predictions[:, 0] = raw_pred
             
-            # Get the predicted percentage increase
-            final_pred = transformed_pred[0, 0]
+            # Calculate expected percentage after inverse transform
+            expected_pct = (raw_pred * self.market_cap_target_scaler.scale_[0] + 
+                        self.market_cap_target_scaler.mean_[0])
+            self.logger.info(f"Expected percentage after transform: {expected_pct:.2f}%")
             
-            self.logger.debug(f"Prediction after inverse transform: {final_pred}")
-            
-            # Add reasonable bounds based on evaluation distribution
-            if final_pred > 1000:
-                self.logger.warning(f"Unusually high prediction ({final_pred:.2f}%), clipping to 1000%")
-                final_pred = 1000
-            elif final_pred < 0:
-                self.logger.warning(f"Negative prediction ({final_pred:.2f}%), clipping to 0%")
-                final_pred = 0
+            # Custom scaling approach
+            if raw_pred > 2.0:  # If model is very confident
+                scaled_pred = 150
+            elif raw_pred > 1.0:
+                scaled_pred = 100
+            elif raw_pred > 0.5:
+                scaled_pred = 75
+            elif raw_pred > 0:
+                scaled_pred = 50
+            else:
+                scaled_pred = 0
                 
-            return final_pred
+            self.logger.info(f"Using custom scaled prediction: {scaled_pred:.2f}%")
+            
+            return scaled_pred
             
         except Exception as e:
             self.logger.error(f"Error scaling prediction: {str(e)}")
