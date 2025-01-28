@@ -421,14 +421,18 @@ class TradingSimulator:
             # Convert tensor prediction to numpy
             pred_numpy = peak_pred.cpu().numpy()
             
-            # Create array in the shape the scaler expects (n_samples, n_features)
-            predictions = pred_numpy.reshape(-1, 1)
+            # Create dummy array matching evaluation format (n_samples, 2)
+            dummy_predictions = np.zeros((1, 2))
+            dummy_predictions[:, 0] = pred_numpy.squeeze()
             
-            # Inverse transform the prediction using the target scaler
-            transformed_pred = self.market_cap_target_scaler.inverse_transform(predictions)
+            # Inverse transform using the target scaler
+            transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_predictions)
             
             # Get the predicted percentage increase
             final_pred = transformed_pred[0, 0]
+            
+            # Add sanity check bounds based on evaluation distribution
+            final_pred = np.clip(final_pred, 0, 1000)  # Max 1000% based on scatter plot
             
             return final_pred
             
@@ -437,7 +441,6 @@ class TradingSimulator:
             self.logger.error(f"Peak pred shape: {peak_pred.shape}")
             self.logger.error(f"Current mcap: {current_mcap}")
             return 0.0  # Return 0 as a safe default
-
     def _reshape_features(self, features_array, expected_dim=11):
       """Helper method to ensure correct feature shape"""
       try:
