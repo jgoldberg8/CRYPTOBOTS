@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from collections import defaultdict
 import torch
 import pandas as pd
+from Before30.dataset.hit_peak_30_dataset import HitPeakBefore30Dataset
 from Before30.models.peak_before_30_model import HitPeakBefore30Predictor
 from PeakMarketCap.models.peak_market_cap_model import PeakMarketCapPredictor
 from PeakMarketCap.models.token_dataset import TokenDataset
