@@ -416,35 +416,27 @@ class TradingSimulator:
             return default_metrics
         
     def _scale_prediction(self, peak_pred, current_mcap):
-      """Helper method to scale peak market cap predictions"""
-      try:
-          # Convert tensor prediction to numpy
-          pred_numpy = peak_pred.cpu().numpy()
-          
-          # Take log of current market cap since that's how the target was preprocessed
-          current_mcap_log = np.log1p(current_mcap)
-          
-          # Create arrays in the shape the scaler expects
-          dummy_pred = np.zeros((1, 1))  # Shape for a single prediction
-          dummy_current = np.zeros((1, 1))  # Shape for current market cap
-          
-          # Fill the arrays
-          dummy_pred[:, 0] = pred_numpy
-          dummy_current[:, 0] = current_mcap_log
-          
-          # Inverse transform the prediction using the target scaler
-          transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_pred)
-          
-          # Convert back from log space
-          final_pred = np.expm1(transformed_pred[0, 0])
-          
-          return final_pred
-          
-      except Exception as e:
-          self.logger.error(f"Error scaling prediction: {str(e)}")
-          self.logger.error(f"Peak pred shape: {peak_pred.shape}")
-          self.logger.error(f"Current mcap: {current_mcap}")
-          return None
+        """Helper method to scale peak market cap predictions"""
+        try:
+            # Convert tensor prediction to numpy
+            pred_numpy = peak_pred.cpu().numpy()
+            
+            # Create array in the shape the scaler expects (n_samples, n_features)
+            predictions = pred_numpy.reshape(-1, 1)
+            
+            # Inverse transform the prediction using the target scaler
+            transformed_pred = self.market_cap_target_scaler.inverse_transform(predictions)
+            
+            # Get the predicted percentage increase
+            final_pred = transformed_pred[0, 0]
+            
+            return final_pred
+            
+        except Exception as e:
+            self.logger.error(f"Error scaling prediction: {str(e)}")
+            self.logger.error(f"Peak pred shape: {peak_pred.shape}")
+            self.logger.error(f"Current mcap: {current_mcap}")
+            return 0.0  # Return 0 as a safe default
 
     def _reshape_features(self, features_array, expected_dim=11):
       """Helper method to ensure correct feature shape"""
@@ -533,7 +525,7 @@ class TradingSimulator:
                     # Convert to probability
                     prob_peaked = torch.sigmoid(peak_before_30_pred).item()
                     
-                    if prob_peaked < 0.5:  # Only proceed with logging if hasn't peaked
+                    if prob_peaked < 0.5:  # Only proceed if hasn't peaked
                         self.logger.info(f"\n{'='*50}")
                         self.logger.info(f"PREDICTION - Token: {token_mint}")
                         self.logger.info(f"Probability already peaked: {prob_peaked:.2%}")
@@ -556,14 +548,14 @@ class TradingSimulator:
                             global_features_market_cap, quality_features
                         )
                         
-                        # Convert prediction to percentage
-                        percent_increase = percent_increase_pred.item()
+                        # Inverse transform the prediction
+                        percent_increase = self._scale_prediction(percent_increase_pred, token_data['current_market_cap'])
+                        self.logger.info(f"Predicted percent increase: {percent_increase:.2f}%")
                         
                         # Calculate target sell price based on predicted increase
                         current_mcap = token_data['current_market_cap']
-                        target_increase = percent_increase - 10  # Sell at 10% below predicted increase
+                        target_increase = max(0, percent_increase - 10)  # Sell at 10% below predicted increase, minimum 0
                         target_sell_price = current_mcap * (1 + target_increase / 100)
-                        print("increase: " + str(target_increase))
                         
                         if target_increase > 20:  # Only enter if potential upside is > 20%
                             token_data['predicted_increase'] = percent_increase
