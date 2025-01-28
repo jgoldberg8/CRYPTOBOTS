@@ -563,6 +563,7 @@ class TradingSimulator:
                         current_mcap = token_data['current_market_cap']
                         target_increase = percent_increase - 10  # Sell at 10% below predicted increase
                         target_sell_price = current_mcap * (1 + target_increase / 100)
+                        print("increase: " + str(target_increase))
                         
                         if target_increase > 20:  # Only enter if potential upside is > 20%
                             token_data['predicted_increase'] = percent_increase
