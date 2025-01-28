@@ -218,9 +218,14 @@ class TradingSimulator:
             model.load_state_dict(checkpoint['model_state_dict'])
             model.eval()
             
+            # Store target scaler if available
+            target_scaler = checkpoint.get('target_scaler')
+            if target_scaler is None:
+                self.logger.warning("Target scaler not found in model checkpoint")
+                
             return {
                 'model': model,
-                'target_scaler': checkpoint.get('target_scaler')
+                'target_scaler': target_scaler
             }
             
         except Exception as e:
@@ -422,8 +427,12 @@ class TradingSimulator:
             pred_numpy = peak_pred.cpu().numpy()
             
             # Create dummy array matching evaluation format (n_samples, 2)
+            # Initialize with zeros since we only need the first column
             dummy_predictions = np.zeros((1, 2))
             dummy_predictions[:, 0] = pred_numpy.squeeze()
+            
+            # Log raw prediction for debugging
+            self.logger.debug(f"Raw prediction before inverse transform: {pred_numpy.squeeze()}")
             
             # Inverse transform using the target scaler
             transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_predictions)
@@ -431,9 +440,16 @@ class TradingSimulator:
             # Get the predicted percentage increase
             final_pred = transformed_pred[0, 0]
             
-            # Add sanity check bounds based on evaluation distribution
-            final_pred = np.clip(final_pred, 0, 1000)  # Max 1000% based on scatter plot
+            self.logger.debug(f"Prediction after inverse transform: {final_pred}")
             
+            # Add reasonable bounds based on evaluation distribution
+            if final_pred > 1000:
+                self.logger.warning(f"Unusually high prediction ({final_pred:.2f}%), clipping to 1000%")
+                final_pred = 1000
+            elif final_pred < 0:
+                self.logger.warning(f"Negative prediction ({final_pred:.2f}%), clipping to 0%")
+                final_pred = 0
+                
             return final_pred
             
         except Exception as e:
@@ -441,6 +457,8 @@ class TradingSimulator:
             self.logger.error(f"Peak pred shape: {peak_pred.shape}")
             self.logger.error(f"Current mcap: {current_mcap}")
             return 0.0  # Return 0 as a safe default
+    
+
     def _reshape_features(self, features_array, expected_dim=11):
       """Helper method to ensure correct feature shape"""
       try:
