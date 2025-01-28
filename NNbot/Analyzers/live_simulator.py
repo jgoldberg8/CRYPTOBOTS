@@ -569,7 +569,7 @@ class TradingSimulator:
                         target_increase = max(0, percent_increase - 10)  # Sell at 10% below predicted increase, minimum 0
                         target_sell_price = current_mcap * (1 + target_increase / 100)
                         
-                        if target_increase > 20:  # Only enter if potential upside is > 20%
+                        if target_increase > 50:  # Only enter if potential upside is > 20%
                             token_data['predicted_increase'] = percent_increase
                             token_data['target_sell_price'] = target_sell_price
                             
