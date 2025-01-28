@@ -436,28 +436,16 @@ class TradingSimulator:
     def _scale_prediction(self, peak_pred, current_mcap):
         """Helper method to scale peak market cap predictions"""
         try:
-            # Convert tensor prediction to numpy
+            # Convert tensor prediction to numpy and get raw value
             pred_numpy = peak_pred.cpu().numpy()
+            raw_pred = pred_numpy.squeeze()
             
-            # Create dummy array matching evaluation format (n_samples, 2)
-            # Initialize with zeros since we only need the first column
-            dummy_predictions = np.zeros((1, 2))
-            dummy_predictions[:, 0] = pred_numpy.squeeze()
+            self.logger.info(f"Using raw model prediction: {raw_pred:.2f}%")
             
-            # Inverse transform using the target scaler
-            transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_predictions)
-            
-            # Get the predicted percentage increase
-            final_pred = transformed_pred[0, 0]
-            
-            # Log for debugging but don't modify the prediction
-            self.logger.info(f"Raw prediction before transform: {pred_numpy.squeeze()}")
-            self.logger.info(f"Final prediction after transform: {final_pred:.2f}%")
-            
-            return final_pred
+            return raw_pred
             
         except Exception as e:
-            self.logger.error(f"Error scaling prediction: {str(e)}")
+            self.logger.error(f"Error in prediction: {str(e)}")
             self.logger.error(f"Peak pred shape: {peak_pred.shape}")
             self.logger.error(f"Current mcap: {current_mcap}")
             return 0.0  # Return 0 as a safe default
