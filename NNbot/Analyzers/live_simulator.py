@@ -532,7 +532,6 @@ class TradingSimulator:
                     
                     # Convert to probability
                     prob_peaked = torch.sigmoid(peak_before_30_pred).item()
-                    print("prediction: " + str(prob_peaked))
                     
                     if prob_peaked < 0.5:  # Only proceed with logging if hasn't peaked
                         self.logger.info(f"\n{'='*50}")
