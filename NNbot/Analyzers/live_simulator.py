@@ -439,41 +439,28 @@ class TradingSimulator:
             # Convert tensor prediction to numpy
             pred_numpy = peak_pred.cpu().numpy()
             
-            # Log raw prediction for debugging
-            raw_pred = pred_numpy.squeeze()
-            self.logger.info(f"Raw model output: {raw_pred}")
-            
             # Create dummy array matching evaluation format (n_samples, 2)
+            # Initialize with zeros since we only need the first column
             dummy_predictions = np.zeros((1, 2))
-            dummy_predictions[:, 0] = raw_pred
+            dummy_predictions[:, 0] = pred_numpy.squeeze()
             
-            # Calculate expected percentage after inverse transform
-            expected_pct = (raw_pred * self.market_cap_target_scaler.scale_[0] + 
-                        self.market_cap_target_scaler.mean_[0])
-            self.logger.info(f"Expected percentage after transform: {expected_pct:.2f}%")
+            # Inverse transform using the target scaler
+            transformed_pred = self.market_cap_target_scaler.inverse_transform(dummy_predictions)
             
-            # Custom scaling approach
-            if raw_pred > 2.0:  # If model is very confident
-                scaled_pred = 150
-            elif raw_pred > 1.0:
-                scaled_pred = 100
-            elif raw_pred > 0.5:
-                scaled_pred = 75
-            elif raw_pred > 0:
-                scaled_pred = 50
-            else:
-                scaled_pred = 0
-                
-            self.logger.info(f"Using custom scaled prediction: {scaled_pred:.2f}%")
+            # Get the predicted percentage increase
+            final_pred = transformed_pred[0, 0]
             
-            return scaled_pred
+            # Log for debugging but don't modify the prediction
+            self.logger.info(f"Raw prediction before transform: {pred_numpy.squeeze()}")
+            self.logger.info(f"Final prediction after transform: {final_pred:.2f}%")
+            
+            return final_pred
             
         except Exception as e:
             self.logger.error(f"Error scaling prediction: {str(e)}")
             self.logger.error(f"Peak pred shape: {peak_pred.shape}")
             self.logger.error(f"Current mcap: {current_mcap}")
             return 0.0  # Return 0 as a safe default
-    
 
     def _reshape_features(self, features_array, expected_dim=11):
       """Helper method to ensure correct feature shape"""
