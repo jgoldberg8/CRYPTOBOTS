@@ -184,7 +184,7 @@ class TradingSimulator:
               hidden_size=256,
               num_layers=3,
               dropout_rate=0.5,
-              global_feature_dim=5  # Explicitly set to 7 for Before30 model
+              global_feature_dim=7  # Explicitly set to 7 for Before30 model
           ).to(self.device)
           
           model.load_state_dict(checkpoint['model_state_dict'])
