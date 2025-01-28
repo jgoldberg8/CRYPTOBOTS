@@ -218,10 +218,22 @@ class TradingSimulator:
             model.load_state_dict(checkpoint['model_state_dict'])
             model.eval()
             
-            # Store target scaler if available
+            # First try to get scaler from checkpoint
             target_scaler = checkpoint.get('target_scaler')
-            if target_scaler is None:
-                self.logger.warning("Target scaler not found in model checkpoint")
+            if target_scaler is not None:
+                self.logger.info("Using target scaler from model checkpoint")
+            else:
+                # Try to load from file as backup
+                scaler_path = os.path.join('scalers', 'target_scaler.joblib')
+                if os.path.exists(scaler_path):
+                    target_scaler = joblib.load(scaler_path)
+                    self.logger.info("Using target scaler from file")
+                else:
+                    raise RuntimeError("No target scaler found in checkpoint or files")
+                
+            # Print scaler parameters for verification
+            self.logger.info(f"Target scaler mean: {target_scaler.mean_}")
+            self.logger.info(f"Target scaler scale: {target_scaler.scale_}")
                 
             return {
                 'model': model,
@@ -231,6 +243,7 @@ class TradingSimulator:
         except Exception as e:
             self.logger.error(f"Error in _load_peak_market_cap_model: {e}")
             raise
+
 
     def _calculate_features(self, token_data):
         """Calculate features for model prediction with robust error handling"""
