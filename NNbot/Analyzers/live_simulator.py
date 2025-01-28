@@ -279,8 +279,8 @@ class TradingSimulator:
                     token_data['initial_market_cap'],
                     token_data['volume_pressure'],
                     token_data['buy_sell_ratio'],
-                    features['price_volatility_0to30s'],
-                    features['momentum_0to30s']
+                    token_data['volume_pressure'],
+                    token_data['initial_investment_ratio']
                 ]])
                 features['global'] = market_cap_global_features
                 df['peak_market_cap'] = token_data['current_market_cap']
@@ -296,6 +296,9 @@ class TradingSimulator:
                     features['momentum_0to30s']
                 ]])
                 features['global'] = before30_global_features
+
+                self.logger.info(f"Global features shape: {features['global'].shape}")
+                self.logger.info(f"Global features content: {features['global']}")
 
                 
 
