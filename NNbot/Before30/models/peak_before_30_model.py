@@ -425,7 +425,7 @@ def main_hit_peak_before_30(
     weight_decay=0.01, 
     patience=15, 
     min_delta=0.001,
-    batch_size=72,
+    batch_size=32,
 ):
     
     # Set device

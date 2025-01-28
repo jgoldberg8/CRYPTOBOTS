@@ -22,7 +22,7 @@ def clean_dataset(df):
     df = df.dropna(subset=critical_cols)
     df = df.copy()
     df = df.dropna(subset=critical_cols)
-    df = df[df['time_to_peak'] < 180]
+    df = df[df['time_to_peak'] < 120]
     
     # Create new volume and pressure features based on early windows
     df['volume_pressure_early'] = df['volume_0to5s'] / (df['initial_market_cap'] + 1)
