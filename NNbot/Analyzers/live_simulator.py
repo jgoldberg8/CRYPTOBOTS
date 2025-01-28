@@ -261,17 +261,6 @@ class TradingSimulator:
             # Add time window features to base data
             base_data.update(features)
             
-            # Create DataFrame with single row and explicit index
-            df = pd.DataFrame([base_data])
-            
-            # Convert creation_time to numeric format
-            creation_time = token_data['creation_time']
-            if isinstance(creation_time, str):
-                creation_time = pd.to_datetime(creation_time)
-            df['creation_time'] = creation_time.strftime("%Y-%m-%d %H:%M:%S")
-            df['creation_time_numeric'] = creation_time.timestamp()
-            
-            # Create correct global feature sets based on context
             is_peak_pred = 'predicted_peak' in token_data
             
             if is_peak_pred:
@@ -283,18 +272,8 @@ class TradingSimulator:
                     token_data['volume_pressure'],
                     token_data['initial_investment_ratio']
                 ]])
-                features['global'] = market_cap_global_features
-                df['peak_market_cap'] = token_data['current_market_cap']
-                
-                # Use TokenDataset for market cap model
-                dataset = TokenDataset(
-                    df,
-                    scaler={
-                        'global': self.market_cap_global_scaler,
-                        'target': self.market_cap_target_scaler
-                    },
-                    train=False
-                )
+                features['global'] = self.market_cap_global_scaler.transform(market_cap_global_features)
+
             else:
                 # Global features for Before30 model (7 features)
                 before30_global_features = np.array([[
@@ -306,41 +285,51 @@ class TradingSimulator:
                     features['volume_volatility_0to30s'],
                     features['momentum_0to30s']
                 ]])
-                features['global'] = before30_global_features
+                features['global'] = self.before30_global_scaler.transform(before30_global_features)
 
-                # Use HitPeakBefore30Dataset for before30 model
-                dataset = HitPeakBefore30Dataset(
-                    df,
-                    scaler={
-                        'global': self.before30_global_scaler,
-                        'target': None  # No target scaler for before30 model
-                    },
-                    train=False
-                )
-
-            # Get preprocessed data
-            processed_data = dataset._preprocess_data(df, fit=False)
-            if processed_data is None:
-                return None
-            
-            # Keep the global features we created earlier
-            processed_data['global'] = features['global']
+            # Process data for each time window
+            processed_data = {'data': {}}
             
             # Reshape features for each time window
             for window_type in ['5s', '10s', '20s', '30s']:
-                if window_type in processed_data['data']:
-                    reshaped = self._reshape_features(processed_data['data'][window_type])
-                    if reshaped is None:
-                        self.logger.error(f"Failed to reshape {window_type} features")
-                        return None
-                    processed_data['data'][window_type] = reshaped
+                window_features = []
+                intervals = self.time_windows[window_type]
+                
+                for start, end in intervals:
+                    window_key = f"{start}to{end}s"
+                    feature_array = []
+                    
+                    # Collect features in consistent order
+                    base_features = [
+                        'transaction_count',
+                        'buy_pressure',
+                        'volume',
+                        'rsi',
+                        'price_volatility',
+                        'volume_volatility',
+                        'momentum',
+                        'trade_amount_variance',
+                        'transaction_rate',
+                        'trade_concentration',
+                        'unique_wallets'
+                    ]
+                    
+                    for feature in base_features:
+                        key = f"{feature}_{window_key}"
+                        feature_array.append(features.get(key, 0))
+                    
+                    window_features.append(feature_array)
+                
+                processed_data['data'][window_type] = np.array([window_features])
+
+            # Add global features back
+            processed_data['global'] = features['global']
             
             return processed_data
-            
+                
         except Exception as e:
             self.logger.error(f"Error in feature calculation: {str(e)}")
             return None
-
     def _calculate_timeframe_metrics(self, transactions, start_time, start, end):
         """Calculate metrics for a specific timeframe"""
         default_metrics = {
