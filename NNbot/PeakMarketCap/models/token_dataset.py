@@ -160,7 +160,6 @@ class TokenDataset(Dataset):
             'global_features': global_features,
             'quality_features': quality_features,
             'targets': targets,
-            'time_to_peak': self.time_to_peak[idx]
         }
     
 
