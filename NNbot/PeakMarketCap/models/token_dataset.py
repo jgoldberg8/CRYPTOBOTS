@@ -53,10 +53,7 @@ class TokenDataset(Dataset):
             'percent_increase_at_30'
         ] 
         
-        df['percent_increase'] = df['percent_increase'].clip(lower=0)  # Ensure no negatives
-        df['log_percent_increase'] = np.log1p(df['percent_increase'] + 1e-6)  # Add small offset
-    
-        print("Log transform range:", df['log_percent_increase'].min(), df['log_percent_increase'].max())  # Debug info
+        df['log_percent_increase'] = np.log1p(df['percent_increase'])
         self.targets = ['log_percent_increase']
 
 
