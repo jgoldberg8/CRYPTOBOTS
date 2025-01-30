@@ -115,6 +115,7 @@ class PeakMarketCapPredictor(nn.Module):
         self.fc2 = nn.Linear(hidden_size, 1)  # Output a single value for peak market cap
 
         # Initialize weights
+        self.gradient_clip_val = 1.0
         self._initialize_weights()
 
         self.to(self.device)
@@ -123,6 +124,8 @@ class PeakMarketCapPredictor(nn.Module):
         self.lstm_20s.flatten_parameters()
         self.lstm_30s.flatten_parameters()
 
+       
+
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
@@ -130,7 +133,7 @@ class PeakMarketCapPredictor(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm1d):
-                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.weight, 0.1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight)
@@ -140,9 +143,12 @@ class PeakMarketCapPredictor(nn.Module):
     def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
         # Move all inputs to device
         def check_tensor(name, tensor):
-            if torch.isnan(tensor).any():
+            if torch.isnan(tensor).any() or torch.isinf(tensor).any():
                 print(f"NaN detected in {name}")
-                return True
+                tensor = torch.where(torch.isnan(tensor) | torch.isinf(tensor), 
+                               torch.zeros_like(tensor), 
+                               tensor)
+                return tensor
             return False
         x_5s = x_5s.to(self.device)
         check_tensor("conv_5s", x_5s)
@@ -225,8 +231,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                dropout_rate=0.4,           # Reduced due to more data
                                
                                # Optimization parameters
-                               learning_rate=0.0006,        # Slightly reduced for stability
-                               weight_decay= 1e-5,           # Reduced due to more data
+                               learning_rate=0.0001,        # Slightly reduced for stability
+                               weight_decay= 1e-4,           # Reduced due to more data
                                
                                # Training dynamics
                                batch_size=48,               # Increased from 32
