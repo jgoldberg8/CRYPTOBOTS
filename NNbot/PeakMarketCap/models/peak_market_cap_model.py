@@ -89,7 +89,7 @@ class PeakMarketCapPredictor(nn.Module):
         self.range_attention_30s = RangeAttention(hidden_size)
         # Value range embedding
         self.value_range_embedding = nn.Sequential(
-        nn.Linear(5, hidden_size),  # Use all global features
+        nn.Linear(6, hidden_size),  # Use all global features
         nn.BatchNorm1d(hidden_size),  # Add batch norm for better training
         nn.ReLU(),
         nn.Dropout(dropout_rate),  # Add dropout for regularization
