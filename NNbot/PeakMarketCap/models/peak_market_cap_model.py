@@ -303,6 +303,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     loss = custom_market_cap_loss(
                         output, 
                         batch['targets'][:, 0].unsqueeze(1),
+                        batch['time_to_peak'],  # Add this line
                         underprediction_penalty,
                         scale_factor=scale_factor
                     )
