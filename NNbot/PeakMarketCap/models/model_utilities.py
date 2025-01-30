@@ -158,8 +158,13 @@ def custom_market_cap_loss(pred, target, time_to_peak=None, underprediction_pena
                             torch.abs(diff) * underprediction_penalty,
                             torch.abs(diff))
     else:
+        # Convert time_to_peak to tensor if it's not already
+        if not isinstance(time_to_peak, torch.Tensor):
+            time_to_peak = torch.tensor(time_to_peak, device=target.device, dtype=torch.float32)
+        if time_to_peak.dim() == 0:
+            time_to_peak = time_to_peak.unsqueeze(0)
+            
         # Calculate quantile for time_to_peak
-        time_to_peak = time_to_peak.squeeze()
         q75 = torch.tensor(0.75, device=time_to_peak.device)
         time_quartile_75 = torch.quantile(time_to_peak, q75)
         long_time_mask = (time_to_peak > time_quartile_75).unsqueeze(-1)
