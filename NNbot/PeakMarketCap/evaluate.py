@@ -67,25 +67,19 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
             quality_features = batch['quality_features'].to(device)
             
             percent_increase_pred = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
+            # Convert from log space back to original values
             percent_increase_pred = torch.expm1(percent_increase_pred)
+            targets = torch.expm1(batch['targets'][:, 0].unsqueeze(1))
+            
             all_predictions.append(percent_increase_pred.cpu())
-            original_targets = torch.expm1(batch['targets'][:, 0].cpu().unsqueeze(1))
-            all_true_values.append(original_targets)
+            all_true_values.append(targets.cpu())
 
     predictions = torch.cat(all_predictions, dim=0).numpy()
     true_values = torch.cat(all_true_values, dim=0).numpy()
 
-    # Create dummy arrays for inverse transform
-    dummy_predictions = np.zeros((predictions.shape[0], 2))
-    dummy_predictions[:, 0] = predictions.squeeze()
-    
-    dummy_true_values = np.zeros((true_values.shape[0], 2))
-    dummy_true_values[:, 0] = true_values.squeeze()
-
-    # Inverse transform using the scaler
-    target_scaler = test_dataset.target_scaler
-    percent_increase_predictions = target_scaler.inverse_transform(dummy_predictions)[:, 0]
-    true_percent_increase = target_scaler.inverse_transform(dummy_true_values)[:, 0]
+    # Use the values directly
+    percent_increase_predictions = predictions.squeeze()
+    true_percent_increase = true_values.squeeze()
 
     # Calculate metrics on actual values
     metrics = {
