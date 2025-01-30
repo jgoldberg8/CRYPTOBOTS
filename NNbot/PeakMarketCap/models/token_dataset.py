@@ -104,7 +104,7 @@ class TokenDataset(Dataset):
             global_data = self.global_scaler.transform(global_data)
             
         # Process targets
-        target_data = df[self.targets].values
+        target_data = np.log1p(df[self.targets].values)
         if fit:
             target_data = self.target_scaler.fit_transform(target_data)
         else:

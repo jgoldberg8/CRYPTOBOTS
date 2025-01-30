@@ -148,56 +148,22 @@ def clean_dataset(df):
     
     return df
 
-def custom_market_cap_loss(pred, target, base_underprediction_penalty=4.0, scale_factor=200):
+def custom_market_cap_loss(pred, target):
     """
-    Enhanced loss function that only penalizes underprediction for high values
-    
+    Loss function for log-transformed market cap predictions
     Args:
-        pred: Model predictions
-        target: True values
-        base_underprediction_penalty: Base penalty for underprediction (only applied to high values)
-        scale_factor: Base scale factor for adjusting loss
+        pred: Model predictions in log space
+        target: True values in log space
+    Returns:
+        Scaled MSE loss
     """
-    diff = pred - target
-    target_abs = torch.abs(target)
+    # Calculate loss in log space
+    mse_loss = torch.square(pred - target)
     
-    # Define range-based masks
-    low_value_mask = target < 200  # Increased threshold for low values
-    mid_value_mask = (target >= 200) & (target < 500)
-    high_value_mask = target >= 500
+    # Add small weight for stability
+    weighted_loss = mse_loss + 1e-6
     
-    # Calculate base loss - only apply underprediction penalty for mid and high values
-    base_loss = torch.where(
-        low_value_mask,
-        # For low values, use symmetric loss regardless of over/under prediction
-        torch.abs(diff),
-        # For mid/high values, apply penalty for underprediction
-        torch.where(
-            diff < 0,
-            torch.abs(diff) * torch.where(
-                high_value_mask,
-                base_underprediction_penalty * (1 + target_abs/500),  # Stronger penalty for high values
-                base_underprediction_penalty  # Regular penalty for mid values
-            ),
-            torch.abs(diff)  # No extra penalty for overprediction
-        )
-    )
-    
-    # Scale weight to help with different ranges
-    scale_weight = torch.where(
-        high_value_mask,
-        torch.clamp(target_abs / scale_factor, min=1.0, max=5.0),
-        torch.where(
-            mid_value_mask,
-            torch.clamp(target_abs / scale_factor, min=0.5, max=2.0),
-            1.0  # No scaling for low values to maintain symmetric loss
-        )
-    )
-    
-    # Apply scaling and calculate mean
-    loss = base_loss * scale_weight
-    return torch.mean(loss)
-
+    return torch.mean(weighted_loss)
 
 class AttentionModule(nn.Module):
     def __init__(self, hidden_size):

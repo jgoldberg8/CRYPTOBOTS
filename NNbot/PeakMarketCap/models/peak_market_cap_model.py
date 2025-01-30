@@ -224,29 +224,21 @@ class PeakMarketCapPredictor(nn.Module):
 
 
 def train_peak_market_cap_model(train_loader, val_loader, 
-                               num_epochs=500,               # Increased for larger dataset
-                               # Architecture parameters 
-                               hidden_size=1024,             # Increased from 384 due to more data
-                               num_layers=4,                # Keep 4 for sequence processing
-                               dropout_rate=0.4,           # Reduced due to more data
-                               
-                               # Optimization parameters
-                               learning_rate=0.0001,        # Slightly reduced for stability
-                               weight_decay= 1e-4,           # Reduced due to more data
-                               
-                               # Training dynamics
-                               batch_size=48,               # Increased from 32
-                               accumulation_steps=3,        # Adjusted for new batch size
-                               
-                               # Early stopping
-                               patience=35,                 # Increased for larger dataset
-                               min_delta=5e-5,             # Adjusted for more stable improvements
-                               
-                               # Loss function
-                               underprediction_penalty=3.0, # Increased slightly
-                               scale_factor=80):   
+                               num_epochs=500,
+                               hidden_size=1024,
+                               num_layers=4,
+                               dropout_rate=0.4,
+                               learning_rate=0.0006,
+                               weight_decay=1e-5,
+                               batch_size=48,
+                               accumulation_steps=3,
+                               patience=35,
+                               min_delta=5e-5):
+    """
+    Training function with comprehensive metrics calculation
+    """
     torch.backends.mkldnn.enabled = True
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model
     input_size = 11
@@ -265,9 +257,6 @@ def train_peak_market_cap_model(train_loader, val_loader,
         weight_decay=weight_decay
     )
 
-    # Setup gradient accumulation
-    accumulation_steps = 3
-    
     # Setup learning rate scheduler
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
@@ -276,7 +265,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
         steps_per_epoch=len(train_loader)//accumulation_steps
     )
 
-    # Initialize EMA model
+    # Initialize EMA model for stable validation
     ema = torch.optim.swa_utils.AveragedModel(peak_market_cap_model)
     
     # Early stopping
@@ -286,13 +275,63 @@ def train_peak_market_cap_model(train_loader, val_loader,
     # Initialize AMP
     scaler = torch.GradScaler()
     use_amp = torch.cuda.is_available()
+    
+    def calculate_metrics(model, data_loader):
+        """Calculate comprehensive metrics in original space"""
+        model.eval()
+        all_preds = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for batch in data_loader:
+                batch = {k: v.to(device) for k, v in batch.items()}
+                output = model(
+                    batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
+                    batch['global_features'], batch['quality_features']
+                )
+                
+                # Convert from log space back to original space
+                preds = torch.expm1(output).cpu().numpy()
+                targets = torch.expm1(batch['targets']).cpu().numpy()
+                
+                all_preds.extend(preds)
+                all_targets.extend(targets)
+        
+        all_preds = np.array(all_preds).flatten()
+        all_targets = np.array(all_targets).flatten()
+        
+        # Calculate various metrics
+        mse = mean_squared_error(all_targets, all_preds)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(all_targets, all_preds)
+        r2 = r2_score(all_targets, all_preds)
+        
+        # Calculate range-specific metrics
+        ranges = [(0, 100), (100, 500), (500, float('inf'))]
+        range_metrics = {}
+        
+        for low, high in ranges:
+            mask = (all_targets >= low) & (all_targets < high)
+            if np.any(mask):
+                range_metrics[f'{low}-{high}'] = {
+                    'rmse': np.sqrt(mean_squared_error(all_targets[mask], all_preds[mask])),
+                    'mae': mean_absolute_error(all_targets[mask], all_preds[mask]),
+                    'count': np.sum(mask)
+                }
+        
+        return {
+            'rmse': rmse,
+            'mae': mae,
+            'r2': r2,
+            'range_metrics': range_metrics
+        }
 
+    # Training loop
     for epoch in range(num_epochs):
-        # Training phase
         peak_market_cap_model.train()
         train_loss = 0.0
         num_batches = len(train_loader)
-        optimizer.zero_grad()  # Zero gradients at start of epoch
+        optimizer.zero_grad()
         
         for batch_idx, batch in enumerate(train_loader):
             batch = {k: v.to(device) for k, v in batch.items()}
@@ -303,21 +342,9 @@ def train_peak_market_cap_model(train_loader, val_loader,
                         batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                         batch['global_features'], batch['quality_features']
                     )
-                    if torch.isnan(output).any():
-                        print(f"NaN in model output: {output}")
-                        continue
-                    loss = custom_market_cap_loss(
-                        output, 
-                        batch['targets'][:, 0].unsqueeze(1),
-                        underprediction_penalty,
-                        scale_factor=scale_factor
-                    )
                     
+                    loss = custom_market_cap_loss(output, batch['targets'])
                     loss = loss / accumulation_steps
-                    if torch.isnan(loss) or loss > 1e5:
-                        print(f"Problem with loss: {loss}")
-                        print(f"Output stats: min={output.min()}, max={output.max()}, mean={output.mean()}")
-                        continue
                 
                 scaler.scale(loss).backward()
                 
@@ -326,8 +353,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=1.0)
                     
                     scaler.step(optimizer)
-                    optimizer.step()  # Move before scheduler.step()
-                    scheduler.step()  # Move after optimizer.step()
+                    scheduler.step()
                     scaler.update()
                     optimizer.zero_grad()
                     
@@ -337,11 +363,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
                     batch['global_features'], batch['quality_features']
                 )
-                loss = custom_market_cap_loss(
-                    output, 
-                    batch['targets'][:, 0].unsqueeze(1),
-                    underprediction_penalty
-                )
+                
+                loss = custom_market_cap_loss(output, batch['targets'])
                 loss = loss / accumulation_steps
                 loss.backward()
                 
@@ -354,63 +377,48 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     ema.update_parameters(peak_market_cap_model)
             
             train_loss += loss.item() * accumulation_steps
-            
-            # Print batch progress
-            if (batch_idx + 1) % 10 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Batch [{batch_idx+1}/{num_batches}], '
-                      f'Loss: {loss.item() * accumulation_steps:.4f}')
         
         train_loss /= num_batches
-
-        # Validation phase
-        peak_market_cap_model.eval()
-        val_loss = 0.0
-        val_batches = len(val_loader)
         
-        with torch.no_grad():
-            for batch in val_loader:
-                batch = {k: v.to(device) for k, v in batch.items()}
-                
-                output = ema.module(  # Use EMA model for validation
-                    batch['x_5s'], batch['x_10s'], batch['x_20s'], batch['x_30s'],
-                    batch['global_features'], batch['quality_features']
-                )
-                loss = custom_market_cap_loss(
-                    output, 
-                    batch['targets'][:, 0].unsqueeze(1),
-                    underprediction_penalty
-                )
-                val_loss += loss.item()
-
-        val_loss /= val_batches
-
-        print(f'Epoch {epoch+1}: Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, '
-              f'LR: {scheduler.get_last_lr()[0]:.6f}')
-
-        # Save best model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        # Validation phase using EMA model
+        val_metrics = calculate_metrics(ema.module, val_loader)
+        train_metrics = calculate_metrics(ema.module, train_loader)
+        
+        # Print detailed metrics
+        print(f'\nEpoch {epoch+1}:')
+        print(f'Train Loss: {train_loss:.4f}, Val RMSE: {val_metrics["rmse"]:.4f}')
+        print(f'Train R²: {train_metrics["r2"]:.4f}, Val R²: {val_metrics["r2"]:.4f}')
+        print('\nValidation Metrics by Range:')
+        for range_name, metrics in val_metrics['range_metrics'].items():
+            print(f'Range {range_name}:')
+            print(f'  RMSE: {metrics["rmse"]:.4f}')
+            print(f'  MAE: {metrics["mae"]:.4f}')
+            print(f'  Count: {metrics["count"]}')
+        
+        # Save best model based on validation RMSE
+        if val_metrics['rmse'] < best_val_loss:
+            best_val_loss = val_metrics['rmse']
             
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': ema.module.state_dict(),  # Save EMA model state
+                'model_state_dict': ema.module.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
                 'scaler_state_dict': scaler.state_dict() if scaler else None,
                 'best_val_loss': best_val_loss,
-                'underprediction_penalty': underprediction_penalty,
+                'metrics': val_metrics,
             }, 'best_peak_market_cap_model.pth')
-
-        # Early stopping
-        if early_stopping(val_loss):
+        
+        # Early stopping check
+        if early_stopping(val_metrics['rmse']):
             print(f"Early stopping triggered after {epoch + 1} epochs")
             break
-
+    
     # Load best model
     checkpoint = torch.load('best_peak_market_cap_model.pth')
     peak_market_cap_model.load_state_dict(checkpoint['model_state_dict'])
     
-    return peak_market_cap_model, best_val_loss
+    return peak_market_cap_model, checkpoint['metrics']
 
 
 def save_scalers(train_dataset, output_dir='scalers'):
