@@ -67,9 +67,18 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
             quality_features = batch['quality_features'].to(device)
             
             percent_increase_pred = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
+            print("Model output range before expm1:", 
+                  percent_increase_pred.min().item(), 
+                  percent_increase_pred.max().item())
+            print("Target range before expm1:", 
+                  batch['targets'].min().item(), 
+                  batch['targets'].max().item())
             # Convert from log space back to original values
             percent_increase_pred = torch.expm1(percent_increase_pred)
             targets = torch.expm1(batch['targets'][:, 0].unsqueeze(1))
+            print("Range after expm1:", 
+                  percent_increase_pred.min().item(), 
+                  percent_increase_pred.max().item())
             
             all_predictions.append(percent_increase_pred.cpu())
             all_true_values.append(targets.cpu())
