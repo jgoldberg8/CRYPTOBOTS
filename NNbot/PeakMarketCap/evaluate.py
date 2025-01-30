@@ -147,5 +147,5 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
 if __name__ == "__main__":
     evaluate_peak_market_cap_model(
         'best_peak_market_cap_model.pth',
-        ['data/token-data-percent.csv']
+        ['data/new-token-data.csv']
     )
