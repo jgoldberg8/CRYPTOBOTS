@@ -53,8 +53,8 @@ class TokenDataset(Dataset):
             'percent_increase_at_30'
         ] 
         
-        self.targets = ['percent_increase']
-        self.time_to_peak = torch.FloatTensor(df['time_to_peak'].values)
+        df['log_percent_increase'] = np.log1p(df['percent_increase'])
+        self.targets = ['log_percent_increase']
 
 
         

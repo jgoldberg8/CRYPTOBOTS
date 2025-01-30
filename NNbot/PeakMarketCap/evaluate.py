@@ -67,9 +67,10 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
             quality_features = batch['quality_features'].to(device)
             
             percent_increase_pred = peak_market_cap_model(x_5s, x_10s, x_20s, x_30s, global_features, quality_features)
-            
+            percent_increase_pred = torch.expm1(percent_increase_pred)
             all_predictions.append(percent_increase_pred.cpu())
-            all_true_values.append(batch['targets'][:, 0].cpu().unsqueeze(1))
+            original_targets = torch.expm1(batch['targets'][:, 0].cpu().unsqueeze(1))
+            all_true_values.append(original_targets)
 
     predictions = torch.cat(all_predictions, dim=0).numpy()
     true_values = torch.cat(all_true_values, dim=0).numpy()
