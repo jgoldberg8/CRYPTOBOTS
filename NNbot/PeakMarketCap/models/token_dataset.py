@@ -178,7 +178,8 @@ class TokenDataset(Dataset):
         
         weights = momentum_weights * market_cap_weights * range_multiplier
         weights = weights + 1e-10
-        return weights / weights.sum()
+        # Convert to numpy array before returning
+        return (weights / weights.sum()).values
 
     def _calculate_feature_importance(self, df):
         """Calculate feature importance scores"""
