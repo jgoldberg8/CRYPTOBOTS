@@ -237,7 +237,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                                min_delta=5e-5,             # Adjusted for more stable improvements
                                
                                # Loss function
-                               underprediction_penalty=1.0, # Increased slightly
+                               underprediction_penalty=3.0, # Increased slightly
                                scale_factor=80):   
     torch.backends.mkldnn.enabled = True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
