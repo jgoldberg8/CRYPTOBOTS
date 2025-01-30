@@ -30,7 +30,7 @@ def clean_dataset(df):
         'time_to_peak'
     ]
     df = df.dropna(subset=critical_cols)
-    df = df[df['hit_peak_before_30'] > True]
+    df = df[df['hit_peak_before_30'] == False]
 
     
     
