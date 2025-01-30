@@ -148,28 +148,53 @@ def clean_dataset(df):
     
     return df
 
-def custom_market_cap_loss(pred, target, underprediction_penalty=2.0, scale_factor=80):
+def custom_market_cap_loss(pred, target, base_underprediction_penalty=4.0, scale_factor=200):
+    """
+    Enhanced loss function that only penalizes underprediction for high values
+    
+    Args:
+        pred: Model predictions
+        target: True values
+        base_underprediction_penalty: Base penalty for underprediction (only applied to high values)
+        scale_factor: Base scale factor for adjusting loss
+    """
     diff = pred - target
-    target_abs = torch.abs(target)  # Added this line
+    target_abs = torch.abs(target)
     
-    # Add specific low-value handling
-    low_value_mask = target < target.median() * 0.5
-    mid_value_mask = (target >= target.median() * 0.5) & (target < target.median() * 1.5)
-    high_value_mask = target >= target.median() * 1.5
+    # Define range-based masks
+    low_value_mask = target < 200  # Increased threshold for low values
+    mid_value_mask = (target >= 200) & (target < 500)
+    high_value_mask = target >= 500
     
-    base_loss = torch.where(diff < 0,
-                         torch.where(low_value_mask,
-                                   torch.abs(diff) * (underprediction_penalty * 1.2),  # Increase penalty for low values
-                                   torch.where(mid_value_mask,
-                                             torch.abs(diff) * underprediction_penalty,
-                                             torch.abs(diff) * (underprediction_penalty * 1.5))),
-                         torch.abs(diff))
+    # Calculate base loss - only apply underprediction penalty for mid and high values
+    base_loss = torch.where(
+        low_value_mask,
+        # For low values, use symmetric loss regardless of over/under prediction
+        torch.abs(diff),
+        # For mid/high values, apply penalty for underprediction
+        torch.where(
+            diff < 0,
+            torch.abs(diff) * torch.where(
+                high_value_mask,
+                base_underprediction_penalty * (1 + target_abs/500),  # Stronger penalty for high values
+                base_underprediction_penalty  # Regular penalty for mid values
+            ),
+            torch.abs(diff)  # No extra penalty for overprediction
+        )
+    )
     
-    # Adjust scaling for different ranges
-    scale_weight = torch.where(low_value_mask,
-                             torch.clamp(target_abs / (scale_factor * 0.5), min=0.2, max=1.5),  # Tighter bounds for low values
-                             torch.clamp(target_abs / scale_factor, min=0.1, max=2.0))
+    # Scale weight to help with different ranges
+    scale_weight = torch.where(
+        high_value_mask,
+        torch.clamp(target_abs / scale_factor, min=1.0, max=5.0),
+        torch.where(
+            mid_value_mask,
+            torch.clamp(target_abs / scale_factor, min=0.5, max=2.0),
+            1.0  # No scaling for low values to maintain symmetric loss
+        )
+    )
     
+    # Apply scaling and calculate mean
     loss = base_loss * scale_weight
     return torch.mean(loss)
 
