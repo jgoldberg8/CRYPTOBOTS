@@ -52,7 +52,8 @@ class TokenDataset(Dataset):
             'creation_time_numeric',
             'percent_increase_at_30'
         ] 
-        self.targets = ['log_percent_increase']
+        
+        self.targets = ['percent_increase']
 
 
         
@@ -157,7 +158,7 @@ class TokenDataset(Dataset):
             'x_30s': x_30s,
             'global_features': global_features,
             'quality_features': quality_features,
-            'targets': targets,
+            'targets': targets
         }
     
 
