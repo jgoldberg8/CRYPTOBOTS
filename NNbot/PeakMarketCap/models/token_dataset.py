@@ -54,6 +54,7 @@ class TokenDataset(Dataset):
         ] 
         
         self.targets = ['percent_increase']
+        self.time_to_peak = torch.FloatTensor(df['time_to_peak'].values)
 
 
         
@@ -158,7 +159,8 @@ class TokenDataset(Dataset):
             'x_30s': x_30s,
             'global_features': global_features,
             'quality_features': quality_features,
-            'targets': targets
+            'targets': targets,
+            'time_to_peak': self.time_to_peak[idx]
         }
     
 

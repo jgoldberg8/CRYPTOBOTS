@@ -148,36 +148,40 @@ def clean_dataset(df):
     
     return df
 
-def custom_market_cap_loss(pred, target, time_to_peak, underprediction_penalty=2.0, scale_factor=80):
+def custom_market_cap_loss(pred, target, time_to_peak=None, underprediction_penalty=2.0, scale_factor=80):
     diff = pred - target
     target_abs = torch.abs(target)
     
-    # Calculate time_to_peak quartiles for the batch
-    time_quartile_75 = torch.quantile(time_to_peak, 0.75)
-    
-    # Create masks for value ranges
-    low_value_mask = target < target.median() * 0.5
-    mid_value_mask = (target >= target.median() * 0.5) & (target < target.median() * 1.5)
-    high_value_mask = target >= target.median() * 1.5
-    
-    # Create mask for long time to peak
-    long_time_mask = time_to_peak > time_quartile_75
-    
-    # Only apply underprediction penalty for long time_to_peak samples
-    base_loss = torch.where(diff < 0,
-                         torch.where(long_time_mask,  # Only apply penalty for long time_to_peak
-                             torch.where(low_value_mask,
-                                       torch.abs(diff) * (underprediction_penalty * 1.2),
-                                       torch.where(mid_value_mask,
-                                                 torch.abs(diff) * underprediction_penalty,
-                                                 torch.abs(diff) * (underprediction_penalty * 1.5))),
-                             torch.abs(diff)),  # No penalty for short time_to_peak
-                         torch.abs(diff))
+    # If time_to_peak is not provided (during prediction), use standard loss
+    if time_to_peak is None:
+        base_loss = torch.where(diff < 0,
+                            torch.abs(diff) * underprediction_penalty,
+                            torch.abs(diff))
+    else:
+        # Calculate quantile for time_to_peak
+        time_to_peak = time_to_peak.squeeze()
+        q75 = torch.tensor(0.75, device=time_to_peak.device)
+        time_quartile_75 = torch.quantile(time_to_peak, q75)
+        long_time_mask = (time_to_peak > time_quartile_75).unsqueeze(-1)
+        
+        # Create masks for value ranges
+        low_value_mask = target < target.median() * 0.5
+        mid_value_mask = (target >= target.median() * 0.5) & (target < target.median() * 1.5)
+        
+        base_loss = torch.where(diff < 0,
+                            torch.where(long_time_mask,
+                                torch.where(low_value_mask,
+                                        torch.abs(diff) * (underprediction_penalty * 1.2),
+                                        torch.where(mid_value_mask,
+                                                torch.abs(diff) * underprediction_penalty,
+                                                torch.abs(diff) * (underprediction_penalty * 1.5))),
+                                torch.abs(diff)),
+                            torch.abs(diff))
     
     # Adjust scaling for different ranges
     scale_weight = torch.where(low_value_mask,
-                             torch.clamp(target_abs / (scale_factor * 0.5), min=0.2, max=1.5),
-                             torch.clamp(target_abs / scale_factor, min=0.1, max=2.0))
+                           torch.clamp(target_abs / (scale_factor * 0.5), min=0.2, max=1.5),
+                           torch.clamp(target_abs / scale_factor, min=0.1, max=2.0))
     
     loss = base_loss * scale_weight
     return torch.mean(loss)
