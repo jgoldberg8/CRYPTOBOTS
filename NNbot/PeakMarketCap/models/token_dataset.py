@@ -164,22 +164,52 @@ class TokenDataset(Dataset):
 
 
     def _calculate_sample_weights(self, df):
-        # Calculate range-specific weights
-        low_value_mask = df['peak_market_cap'] < df['peak_market_cap'].median() * 0.5
-        high_value_mask = df['peak_market_cap'] > df['peak_market_cap'].median() * 1.5
+        """
+        Calculate sample weights based on percent_increase distribution
+        to handle class imbalance
+        """
+        percent_increases = df['percent_increase'].values
         
-        # Base weights from momentum and market cap
-        momentum_weights = np.abs(df[[col for col in df.columns if 'momentum' in col]]).mean(axis=1)
-        market_cap_weights = df['peak_market_cap']
+        # Define ranges and their target proportions
+        ranges = [
+            (0, 100, 0.4),      # 40% weight for small increases
+            (100, 500, 0.3),    # 30% weight for medium increases
+            (500, np.inf, 0.3)  # 30% weight for large increases
+        ]
         
-        # Adjust weights by range
-        range_multiplier = np.where(low_value_mask, 1.5,  # More emphasis on low values
-                                np.where(high_value_mask, 2.0, 1.0))
+        # Initialize weights array
+        weights = np.zeros_like(percent_increases, dtype=np.float32)
         
-        weights = momentum_weights * market_cap_weights * range_multiplier
-        weights = weights + 1e-10
-        # Convert to numpy array before returning
-        return (weights / weights.sum()).values
+        # Calculate weights for each range
+        for min_val, max_val, target_prop in ranges:
+            mask = (percent_increases >= min_val) & (percent_increases < max_val)
+            samples_in_range = np.sum(mask)
+            
+            if samples_in_range > 0:
+                # Weight = target proportion / current proportion
+                weight_value = (target_prop * len(percent_increases)) / samples_in_range
+                weights[mask] = weight_value
+        
+        # Additional weight scaling based on value within range
+        # This gives gradually more weight to higher values within each range
+        for min_val, max_val, _ in ranges:
+            mask = (percent_increases >= min_val) & (percent_increases < max_val)
+            if np.any(mask):
+                range_values = percent_increases[mask]
+                min_range = np.min(range_values)
+                max_range = np.max(range_values)
+                if max_range > min_range:
+                    # Scale from 1 to 2 within each range
+                    scale = 1 + (percent_increases[mask] - min_range) / (max_range - min_range)
+                    weights[mask] *= scale
+
+        # Add small constant to avoid zero weights
+        weights += 1e-5
+        
+        # Normalize weights to sum to 1
+        weights /= weights.sum()
+        
+        return weights
 
     def _calculate_feature_importance(self, df):
         """Calculate feature importance scores"""
