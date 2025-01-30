@@ -49,7 +49,8 @@ class TokenDataset(Dataset):
             'initial_market_cap',
             'volume_pressure',
             'buy_sell_ratio',
-            'creation_time_numeric'
+            'creation_time_numeric',
+            'percent_increase_at_30'
         ] 
         
         self.targets = ['percent_increase']

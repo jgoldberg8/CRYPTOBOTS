@@ -107,7 +107,7 @@ class PeakMarketCapPredictor(nn.Module):
         )
 
         # Global feature processing
-        self.global_fc = nn.Linear(5, hidden_size)
+        self.global_fc = nn.Linear(6, hidden_size)
 
         # Final layers
         self.fc1 = nn.Linear(hidden_size * 6, hidden_size)
@@ -461,7 +461,7 @@ def main():
     print(f"MKL-DNN Enabled: {torch.backends.mkldnn.is_available()}")
     
     # Load and preprocess data
-    df = pd.read_csv('data/token-data-percent.csv')
+    df = pd.read_csv('data/new-token-data.csv')
     df = clean_dataset(df)
     df = add_data_quality_features(df)
 
