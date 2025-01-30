@@ -52,8 +52,6 @@ class TokenDataset(Dataset):
             'creation_time_numeric',
             'percent_increase_at_30'
         ] 
-        
-        df['log_percent_increase'] = np.log1p(df['percent_increase'])
         self.targets = ['log_percent_increase']
 
 
