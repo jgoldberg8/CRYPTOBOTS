@@ -150,21 +150,26 @@ def clean_dataset(df):
     return df
 
 def custom_market_cap_loss(pred, target):
-    """
-    Loss function for log-transformed market cap predictions
-    Args:
-        pred: Model predictions in log space
-        target: True values in log space
-    Returns:
-        Scaled MSE loss
-    """
-    # Calculate loss in log space
-    mse_loss = torch.square(pred - target)
+    # Convert from log space
+    pred_orig = torch.expm1(pred)
+    target_orig = torch.expm1(target)
     
-    # Add small weight for stability
-    weighted_loss = mse_loss + 1e-6
+    # Calculate relative error
+    relative_error = torch.abs(pred_orig - target_orig) / (target_orig + 1)
     
-    return torch.mean(weighted_loss)
+    # Add range-specific weighting
+    weights = torch.where(
+        target_orig > 500,
+        torch.ones_like(target_orig) * 3.0,  # High range
+        torch.where(
+            target_orig > 100,
+            torch.ones_like(target_orig) * 2.0,  # Medium range
+            torch.ones_like(target_orig) * 1.0  # Low range
+        )
+    )
+    
+    loss = relative_error * weights
+    return torch.mean(loss)
 
 class AttentionModule(nn.Module):
     def __init__(self, hidden_size):
