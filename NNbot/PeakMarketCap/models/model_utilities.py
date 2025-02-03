@@ -30,7 +30,8 @@ def clean_dataset(df):
         'time_to_peak'
     ]
     df = df.dropna(subset=critical_cols)
-    df = df[df['hit_peak_before_30'] == False]
+    # Filter for only tokens that actually increased
+    df = df[(df['hit_peak_before_30'] == False) & (df['percent_increase'] > 0.5)]
 
     
     
