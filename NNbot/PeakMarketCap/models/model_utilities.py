@@ -185,10 +185,13 @@ class AttentionModule(nn.Module):
         self.skip_projection = nn.Linear(hidden_size, hidden_size)
         
     def forward(self, x):
-        attention_weights = self.attention(x)
-        attended = torch.sum(x * attention_weights, dim=1)
-        skip_connection = self.skip_projection(x.mean(dim=1))
-        return attended + skip_connection
+        # x shape: [batch_size, seq_len, hidden_size]
+        attention_weights = self.attention(x)  # [batch_size, seq_len, 1]
+        weighted_sum = torch.sum(x * attention_weights, dim=1)  # [batch_size, hidden_size]
+        skip_connection = self.skip_projection(torch.mean(x, dim=1))  # [batch_size, hidden_size]
+        attended = weighted_sum + skip_connection  # [batch_size, hidden_size]
+        # Reshape back to 3D for consistency
+        return attended.unsqueeze(1)  # [batch_size, 1, hidden_size]
     
 
 

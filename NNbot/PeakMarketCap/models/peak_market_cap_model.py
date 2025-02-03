@@ -157,36 +157,36 @@ class PeakMarketCapPredictor(nn.Module):
     def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
         # Move inputs to device and process 5s data
         x_5s = x_5s.to(self.device)
-        x_5s = self.conv_5s(x_5s.transpose(1, 2)).transpose(1, 2)
+        x_5s = self.conv_5s(x_5s.transpose(1, 2)).transpose(1, 2)  # [batch, seq, features]
         x_5s, _ = self.lstm_5s(x_5s)
-        x_5s = self.attention_5s(x_5s)
+        x_5s = self.attention_5s(x_5s)  # Now returns [batch, 1, hidden]
         
         # Process 10s data
         x_10s = x_10s.to(self.device)
         x_10s = self.conv_10s(x_10s.transpose(1, 2)).transpose(1, 2)
         x_10s, _ = self.lstm_10s(x_10s)
-        x_10s = self.attention_10s(x_10s)
+        x_10s = self.attention_10s(x_10s)  # [batch, 1, hidden]
         
         # Process 20s data
         x_20s = x_20s.to(self.device)
         x_20s, _ = self.lstm_20s(x_20s)
-        x_20s = self.attention_20s(x_20s)
+        x_20s = self.attention_20s(x_20s)  # [batch, 1, hidden]
         
         # Process 30s data
         x_30s = x_30s.to(self.device)
         x_30s, _ = self.lstm_30s(x_30s)
-        x_30s = self.attention_30s(x_30s)
+        x_30s = self.attention_30s(x_30s)  # [batch, 1, hidden]
         
         # Process global features and move to device
         global_features = global_features.to(self.device)
-        value_range = self.value_range_embedding(global_features)
+        value_range = self.value_range_embedding(global_features).unsqueeze(1)  # [batch, 1, hidden]
         global_features = self.global_fc(global_features)
         
         # Apply range attention
-        x_5s = self.range_attention_5s(x_5s, value_range)
-        x_10s = self.range_attention_10s(x_10s, value_range)
-        x_20s = self.range_attention_20s(x_20s, value_range)
-        x_30s = self.range_attention_30s(x_30s, value_range)
+        x_5s = self.range_attention_5s(x_5s, value_range).squeeze(1)  # [batch, hidden]
+        x_10s = self.range_attention_10s(x_10s, value_range).squeeze(1)
+        x_20s = self.range_attention_20s(x_20s, value_range).squeeze(1)
+        x_30s = self.range_attention_30s(x_30s, value_range).squeeze(1)
         
         # Move quality features to device
         quality_features = quality_features.to(self.device)
@@ -203,7 +203,7 @@ class PeakMarketCapPredictor(nn.Module):
             x_20s * quality_weights,
             x_30s * quality_weights,
             global_features,
-            value_range
+            self.value_range_embedding(global_features)  # Get fresh value range features
         ]
         combined = torch.cat(weighted_features, dim=1)
         
