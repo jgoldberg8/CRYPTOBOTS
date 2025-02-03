@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     """
-    Evaluate percent increase prediction model with log-space handling.
+    Evaluate percent increase prediction model showing actual percentage values.
     """
     # Load and preprocess data
     dfs = []
@@ -56,6 +56,7 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     batch_size = 64
     all_predictions = []
     all_true_values = []
+    original_true_values = []  # Store original values for comparison
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
@@ -67,20 +68,33 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
             global_features = batch['global_features'].to(device)
             quality_features = batch['quality_features'].to(device)
             
+            # Get model predictions
             predictions = peak_market_cap_model(
                 x_5s, x_10s, x_20s, x_30s, 
                 global_features, quality_features
             )
             
-            # Convert from log space to original space
-            predictions = torch.expm1(predictions)
-            true_values = torch.expm1(batch['targets'])
+            # Prepare for inverse transform
+            pred_array = np.zeros((predictions.shape[0], 2))
+            pred_array[:, 0] = predictions.cpu().numpy().squeeze()
             
-            all_predictions.append(predictions.cpu())
-            all_true_values.append(true_values[:, 0].cpu().unsqueeze(1))
+            true_array = np.zeros((batch['targets'].shape[0], 2))
+            true_array[:, 0] = batch['targets'][:, 0].cpu().numpy()
+            
+            # Inverse transform predictions and targets
+            pred_unscaled = test_dataset.target_scaler.inverse_transform(pred_array)[:, 0]
+            true_unscaled = test_dataset.target_scaler.inverse_transform(true_array)[:, 0]
+            
+            # Convert from log space to original percentages
+            pred_percentages = np.expm1(pred_unscaled)
+            true_percentages = np.expm1(true_unscaled)
+            
+            all_predictions.append(pred_percentages)
+            all_true_values.append(true_percentages)
 
-    predictions = torch.cat(all_predictions, dim=0).numpy()
-    true_values = torch.cat(all_true_values, dim=0).numpy()
+    # Concatenate all predictions and true values
+    predictions = np.concatenate(all_predictions)
+    true_values = np.concatenate(all_true_values)
 
     # Calculate metrics on actual percentage values
     metrics = {
