@@ -31,7 +31,7 @@ def clean_dataset(df):
     ]
     df = df.dropna(subset=critical_cols)
     # Filter for only tokens that actually increased
-     if df['hit_peak_before_30'].dtype != bool:
+    if df['hit_peak_before_30'].dtype != bool:
         df['hit_peak_before_30'] = df['hit_peak_before_30'].map({'True': True, 'False': False})
     
     # Filter for tokens that didn't peak early and had meaningful increase
@@ -229,7 +229,6 @@ class RangeAttention(nn.Module):
 
 
 
-
 class RangeStratifiedBatchSampler:
     def __init__(self, percent_increases, batch_size, ranges=[(0, 100), (100, 500), (500, float('inf'))]):
         self.batch_size = batch_size
@@ -244,6 +243,13 @@ class RangeStratifiedBatchSampler:
                         self.indices_by_range[(low, high)] = []
                     self.indices_by_range[(low, high)].append(i)
                     break
+        
+        # Calculate minimum number of batches to use all samples at least once
+        self.num_batches = max(
+            len(indices) // (self.batch_size // len(ranges))
+            for indices in self.indices_by_range.values()
+            if indices
+        )
         
         # Calculate samples per range in each batch
         total_samples = len(percent_increases)
@@ -269,7 +275,7 @@ class RangeStratifiedBatchSampler:
         }
 
     def __iter__(self):
-        while True:
+        for _ in range(self.num_batches):
             batch_indices = []
             
             # Sample from each range
@@ -286,7 +292,10 @@ class RangeStratifiedBatchSampler:
             
             # Shuffle the batch
             np.random.shuffle(batch_indices)
+            
+            # Trim to exact batch size
+            batch_indices = batch_indices[:self.batch_size]
             yield batch_indices
             
     def __len__(self):
-        return len(next(iter(self.indices_by_range.values()))) // self.batch_size
+        return self.num_batches
