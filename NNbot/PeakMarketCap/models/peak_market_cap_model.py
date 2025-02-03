@@ -37,8 +37,23 @@ class PeakMarketCapPredictor(nn.Module):
         self.num_layers = num_layers
 
         # Enhanced CNN layers with residual connections
-        self.conv_5s = self._make_conv_block(input_size, hidden_size)
-        self.conv_10s = self._make_conv_block(input_size, hidden_size)
+        self.conv_5s = nn.Sequential(
+            nn.Conv1d(input_size, hidden_size, kernel_size=3, padding='same'),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            ResidualConvBlock(hidden_size),
+            nn.MaxPool1d(2, padding=1)  # Add padding to MaxPool
+        )
+
+        self.conv_10s = nn.Sequential(
+            nn.Conv1d(input_size, hidden_size, kernel_size=3, padding='same'),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            ResidualConvBlock(hidden_size),
+            nn.MaxPool1d(2, padding=1)  # Add padding to MaxPool
+        )
 
         # Bidirectional LSTM layers with increased capacity
         self.lstm_5s = nn.LSTM(hidden_size, hidden_size//2, num_layers,
@@ -87,15 +102,7 @@ class PeakMarketCapPredictor(nn.Module):
         self.to(self.device)
         self._flatten_lstm_parameters()
 
-    def _make_conv_block(self, in_channels, out_channels):
-        return nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size=2, padding=1),
-            nn.BatchNorm1d(out_channels),
-            nn.ReLU(),
-            nn.Dropout(self.dropout_rate),
-            ResidualConvBlock(out_channels),
-            nn.MaxPool1d(2)
-        )
+
 
     def _make_attention_block(self, hidden_size):
         return nn.Sequential(
@@ -240,9 +247,10 @@ class PeakMarketCapPredictor(nn.Module):
 class ResidualConvBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.conv1 = nn.Conv1d(channels, channels, kernel_size=2, padding=1)
+        # Use same padding to maintain tensor size
+        self.conv1 = nn.Conv1d(channels, channels, kernel_size=3, padding='same')
         self.bn1 = nn.BatchNorm1d(channels)
-        self.conv2 = nn.Conv1d(channels, channels, kernel_size=2, padding=1)
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size=3, padding='same')
         self.bn2 = nn.BatchNorm1d(channels)
 
     def forward(self, x):
