@@ -450,15 +450,9 @@ def train_peak_market_cap_model(train_loader, val_loader,
                 }
             }, 'best_peak_market_cap_model.pth')
         
-        # Early stopping with cooldown
-        if early_stopping(val_metrics['rmse']):
-            print(f"Early stopping triggered after {epoch + 1} epochs")
-            if epoch < num_epochs // 2:  # If stopped in first half, try to recover
-                early_stopping.reset()
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = param_group['lr'] * 0.5
-                print("Attempting to recover with reduced learning rate")
-                continue
+        if early_stopping(peak_market_cap_model, best_val_loss, epoch):
+            print(f"Early stopping triggered at epoch {epoch}")
+            early_stopping.restore(peak_market_cap_model)
             break
     
     # Load best model
