@@ -150,13 +150,23 @@ class PeakMarketCapPredictor(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _flatten_lstm_parameters(self):
-        self.lstm_5s.flatten_parameters()
-        self.lstm_10s.flatten_parameters()
-        self.lstm_20s.flatten_parameters()
-        self.lstm_30s.flatten_parameters()
+        """Flatten LSTM parameters for better memory efficiency"""
+        for name, module in self.named_modules():
+            if isinstance(module, nn.LSTM):
+                # Ensure parameters are on the same device as the module
+                device = next(module.parameters()).device
+                module.flatten_parameters()
+                # Double-check if parameters need flattening again
+                if not module._flat_weights_names:
+                    # If parameters aren't flat, manually move them to contiguous memory
+                    for weight in module._flat_weights:
+                        if weight is not None:
+                            weight.data = weight.data.contiguous()
+                    module.flatten_parameters()
 
     def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
         # Move inputs to device and process 5s data
+        self._flatten_lstm_parameters()
         x_5s = x_5s.to(self.device)
         x_5s = self.conv_5s(x_5s.transpose(1, 2)).transpose(1, 2)
         x_5s, _ = self.lstm_5s(x_5s)
@@ -283,15 +293,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
     ).to(device)
     peak_market_cap_model = peak_market_cap_model.to(memory_format=torch.channels_last)
 
-    # Explicitly flatten LSTM parameters
-    def flatten_lstm_parameters(model):
-        for name, module in model.named_modules():
-            if isinstance(module, nn.LSTM):
-                module.flatten_parameters()
-    
-    flatten_lstm_parameters(peak_market_cap_model)
 
-    # Parameter groups with different learning rates
     parameter_groups = [
         {'params': [p for n, p in peak_market_cap_model.named_parameters() if 'fc' in n or 'linear' in n],
          'lr': learning_rate},
@@ -401,9 +403,6 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     ema.update_parameters(peak_market_cap_model)
             
             train_loss += loss.item() * accumulation_steps
-            if np.random.random() < 0.1:  # 10% chance each batch
-                flatten_lstm_parameters(peak_market_cap_model)
-            
             
             # Periodic status update
             if (batch_idx + 1) % (accumulation_steps * 10) == 0:
