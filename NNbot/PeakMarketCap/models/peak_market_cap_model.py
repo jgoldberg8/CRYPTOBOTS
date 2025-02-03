@@ -126,7 +126,7 @@ class PeakMarketCapPredictor(nn.Module):
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
             ResidualLinearBlock(hidden_size // 2),
-            nn.Linear(hidden_size // 2, 1)
+            nn.Linear(hidden_size // 2, 1),
             nn.Softplus()
         )
 
