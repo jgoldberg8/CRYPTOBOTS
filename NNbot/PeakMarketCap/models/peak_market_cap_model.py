@@ -43,7 +43,7 @@ class PeakMarketCapPredictor(nn.Module):
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
             ResidualConvBlock(hidden_size),
-            nn.MaxPool1d(2, padding=1)  # Add padding to MaxPool
+            nn.MaxPool1d(2, padding=1)
         )
 
         self.conv_10s = nn.Sequential(
@@ -52,10 +52,10 @@ class PeakMarketCapPredictor(nn.Module):
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
             ResidualConvBlock(hidden_size),
-            nn.MaxPool1d(2, padding=1)  # Add padding to MaxPool
+            nn.MaxPool1d(2, padding=1)
         )
 
-        # Bidirectional LSTM layers with increased capacity
+        # Bidirectional LSTM layers
         self.lstm_5s = nn.LSTM(hidden_size, hidden_size//2, num_layers,
                               batch_first=True, bidirectional=True,
                               dropout=self.dropout_rate if num_layers > 1 else 0)
@@ -69,94 +69,58 @@ class PeakMarketCapPredictor(nn.Module):
                                batch_first=True, bidirectional=True,
                                dropout=self.dropout_rate if num_layers > 1 else 0)
 
-        # Enhanced attention modules
-        self.attention_5s = self._make_attention_block(hidden_size)
-        self.attention_10s = self._make_attention_block(hidden_size)
-        self.attention_20s = self._make_attention_block(hidden_size)
-        self.attention_30s = self._make_attention_block(hidden_size)
+        # Attention modules - keeping as direct AttentionModule
+        self.attention_5s = AttentionModule(hidden_size)
+        self.attention_10s = AttentionModule(hidden_size)
+        self.attention_20s = AttentionModule(hidden_size)
+        self.attention_30s = AttentionModule(hidden_size)
 
-        # Range-specific attention modules with increased capacity
-        self.range_attention_5s = self._make_range_attention_block(hidden_size)
-        self.range_attention_10s = self._make_range_attention_block(hidden_size)
-        self.range_attention_20s = self._make_range_attention_block(hidden_size)
-        self.range_attention_30s = self._make_range_attention_block(hidden_size)
+        # Range-specific attention modules - keeping as direct RangeAttention
+        self.range_attention_5s = RangeAttention(hidden_size)
+        self.range_attention_10s = RangeAttention(hidden_size)
+        self.range_attention_20s = RangeAttention(hidden_size)
+        self.range_attention_30s = RangeAttention(hidden_size)
 
-        # Enhanced value range embedding
-        self.value_range_embedding = self._make_value_range_block(6, hidden_size)
-
-        # Improved quality gate with residual connection
-        self.quality_gate = self._make_quality_gate(hidden_size)
-
-        # Enhanced global feature processing
-        self.global_fc = self._make_global_feature_block(6, hidden_size)
-
-        # Hierarchical feature processing
-        self.feature_reduction = self._make_feature_reduction_block(hidden_size * 6)
-        
-        # Final prediction layers with residual connections
-        self.final_layers = self._make_final_layers(hidden_size)
-
-        # Initialize weights
-        self._initialize_weights()
-
-        self.to(self.device)
-        self._flatten_lstm_parameters()
-
-
-
-    def _make_attention_block(self, hidden_size):
-        return nn.Sequential(
-            AttentionModule(hidden_size),
-            nn.LayerNorm(hidden_size)
-        )
-
-    def _make_range_attention_block(self, hidden_size):
-        return nn.Sequential(
-            RangeAttention(hidden_size),
-            nn.LayerNorm(hidden_size)
-        )
-
-    def _make_value_range_block(self, in_features, hidden_size):
-        return nn.Sequential(
-            nn.Linear(in_features, hidden_size),
+        # Value range embedding
+        self.value_range_embedding = nn.Sequential(
+            nn.Linear(6, hidden_size),
             nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
-            nn.Dropout(self.dropout_rate),
+            nn.Dropout(dropout_rate),
             ResidualLinearBlock(hidden_size),
             nn.Linear(hidden_size, hidden_size)
         )
 
-    def _make_quality_gate(self, hidden_size):
-        return nn.Sequential(
+        # Quality gate
+        self.quality_gate = nn.Sequential(
             nn.Linear(hidden_size + 2, hidden_size),
             nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
-            nn.Dropout(self.dropout_rate),
+            nn.Dropout(0.4),
             ResidualLinearBlock(hidden_size),
             nn.Sigmoid()
         )
 
-    def _make_global_feature_block(self, in_features, hidden_size):
-        return nn.Sequential(
-            nn.Linear(in_features, hidden_size),
+        # Global feature processing
+        self.global_fc = nn.Sequential(
+            nn.Linear(6, hidden_size),
             nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
             ResidualLinearBlock(hidden_size)
         )
 
-    def _make_feature_reduction_block(self, in_features):
-        return nn.Sequential(
-            nn.Linear(in_features, self.hidden_size * 2),
-            nn.BatchNorm1d(self.hidden_size * 2),
+        # Final layers
+        self.feature_reduction = nn.Sequential(
+            nn.Linear(hidden_size * 6, hidden_size * 2),
+            nn.BatchNorm1d(hidden_size * 2),
             nn.ReLU(),
             nn.Dropout(self.dropout_rate),
-            ResidualLinearBlock(self.hidden_size * 2),
-            nn.Linear(self.hidden_size * 2, self.hidden_size)
+            ResidualLinearBlock(hidden_size * 2),
+            nn.Linear(hidden_size * 2, hidden_size)
         )
-
-    def _make_final_layers(self, hidden_size):
-        return nn.Sequential(
+        
+        self.final_layers = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
             nn.BatchNorm1d(hidden_size // 2),
             nn.ReLU(),
@@ -165,11 +129,10 @@ class PeakMarketCapPredictor(nn.Module):
             nn.Linear(hidden_size // 2, 1)
         )
 
-    def _flatten_lstm_parameters(self):
-        self.lstm_5s.flatten_parameters()
-        self.lstm_10s.flatten_parameters()
-        self.lstm_20s.flatten_parameters()
-        self.lstm_30s.flatten_parameters()
+        # Initialize weights
+        self._initialize_weights()
+        self.to(self.device)
+        self._flatten_lstm_parameters()
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -185,64 +148,70 @@ class PeakMarketCapPredictor(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
-        # Input processing with residual connections
-        x_5s = self._process_temporal_data(x_5s, self.conv_5s, self.lstm_5s, self.attention_5s)
-        x_10s = self._process_temporal_data(x_10s, self.conv_10s, self.lstm_10s, self.attention_10s)
-        x_20s = self._process_lstm_data(x_20s, self.lstm_20s, self.attention_20s)
-        x_30s = self._process_lstm_data(x_30s, self.lstm_30s, self.attention_30s)
+    def _flatten_lstm_parameters(self):
+        self.lstm_5s.flatten_parameters()
+        self.lstm_10s.flatten_parameters()
+        self.lstm_20s.flatten_parameters()
+        self.lstm_30s.flatten_parameters()
 
-        # Value range processing
+    def forward(self, x_5s, x_10s, x_20s, x_30s, global_features, quality_features):
+        # Move inputs to device and process 5s data
+        x_5s = x_5s.to(self.device)
+        x_5s = self.conv_5s(x_5s.transpose(1, 2)).transpose(1, 2)
+        x_5s, _ = self.lstm_5s(x_5s)
+        x_5s = self.attention_5s(x_5s)
+        
+        # Process 10s data
+        x_10s = x_10s.to(self.device)
+        x_10s = self.conv_10s(x_10s.transpose(1, 2)).transpose(1, 2)
+        x_10s, _ = self.lstm_10s(x_10s)
+        x_10s = self.attention_10s(x_10s)
+        
+        # Process 20s data
+        x_20s = x_20s.to(self.device)
+        x_20s, _ = self.lstm_20s(x_20s)
+        x_20s = self.attention_20s(x_20s)
+        
+        # Process 30s data
+        x_30s = x_30s.to(self.device)
+        x_30s, _ = self.lstm_30s(x_30s)
+        x_30s = self.attention_30s(x_30s)
+        
+        # Process global features and move to device
+        global_features = global_features.to(self.device)
         value_range = self.value_range_embedding(global_features)
+        global_features = self.global_fc(global_features)
         
         # Apply range attention
         x_5s = self.range_attention_5s(x_5s, value_range)
         x_10s = self.range_attention_10s(x_10s, value_range)
         x_20s = self.range_attention_20s(x_20s, value_range)
         x_30s = self.range_attention_30s(x_30s, value_range)
-
-        # Global feature processing
-        global_features = self.global_fc(global_features)
-
+        
+        # Move quality features to device
+        quality_features = quality_features.to(self.device)
+        
         # Quality gating
-        quality_weights = self._apply_quality_gate(
-            [x_5s, x_10s, x_20s, x_30s],
-            quality_features
-        )
-
-        # Feature combination
-        combined = self._combine_features(
-            [x_5s, x_10s, x_20s, x_30s, global_features, value_range],
-            quality_weights
-        )
-
-        # Final prediction with residual connections
+        temporal_mean = torch.mean(torch.stack([x_5s, x_10s, x_20s, x_30s], dim=1), dim=1)
+        quality_context = torch.cat([temporal_mean, quality_features], dim=1)
+        quality_weights = self.quality_gate(quality_context)
+        
+        # Combine features
+        weighted_features = [
+            x_5s * quality_weights,
+            x_10s * quality_weights,
+            x_20s * quality_weights,
+            x_30s * quality_weights,
+            global_features,
+            value_range
+        ]
+        combined = torch.cat(weighted_features, dim=1)
+        
+        # Final prediction
         output = self.feature_reduction(combined)
         output = self.final_layers(output)
-
+        
         return output
-
-    def _process_temporal_data(self, x, conv, lstm, attention):
-        x = conv(x.transpose(1, 2)).transpose(1, 2)
-        x, _ = lstm(x)
-        return attention(x)
-
-    def _process_lstm_data(self, x, lstm, attention):
-        x, _ = lstm(x)
-        return attention(x)
-
-    def _apply_quality_gate(self, features, quality_features):
-        temporal_mean = torch.mean(torch.stack(features, dim=1), dim=1)
-        quality_context = torch.cat([temporal_mean, quality_features], dim=1)
-        return self.quality_gate(quality_context)
-
-    def _combine_features(self, features, quality_weights):
-        weighted_features = [
-            f * quality_weights if i < 4 else f
-            for i, f in enumerate(features)
-        ]
-        return torch.cat(weighted_features, dim=1)
-
 
 class ResidualConvBlock(nn.Module):
     def __init__(self, channels):
