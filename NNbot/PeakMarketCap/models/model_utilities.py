@@ -199,21 +199,19 @@ class RangeAttention(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.attention = nn.Sequential(
-            nn.Linear(hidden_size + hidden_size, hidden_size // 2),  # Changed from +1 to +hidden_size
+            nn.Linear(hidden_size * 2, hidden_size // 2),
             nn.Tanh(),
             nn.Linear(hidden_size // 2, 1),
             nn.Softmax(dim=1)
         )
         
     def forward(self, x, value_range):
-        
         # x shape: [batch_size, seq_len, hidden_size]
         # value_range shape: [batch_size, hidden_size]
         
-        # Expand value_range to match x's sequence dimension
-        value_range = value_range.unsqueeze(1).expand(-1, x.size(1), -1)
-        
-        # Now value_range shape: [batch_size, seq_len, hidden_size]
+        # First make value_range match x's sequence dimension
+        value_range = value_range.unsqueeze(1)  # [batch_size, 1, hidden_size]
+        value_range = value_range.expand(-1, x.size(1), -1)  # [batch_size, seq_len, hidden_size]
         
         # Concatenate along feature dimension
         attention_input = torch.cat([x, value_range], dim=-1)
