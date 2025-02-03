@@ -159,38 +159,22 @@ def clean_dataset(df):
 
 def percentage_increase_loss(pred, target):
     """
-    Fixed loss function with more stable calculations
+    Modified loss function for normalized percentage predictions
     """
     # Add small epsilon to prevent division by zero
     epsilon = 1e-6
     
-    # Calculate percentage error with better numerical stability
-    relative_error = torch.abs(pred - target) / (torch.abs(target) + epsilon)
+    # Since predictions and targets are normalized to [0,1], we can use a simpler loss
+    mse_loss = F.mse_loss(pred, target, reduction='none')
     
-    # Identify under/over predictions
-    under_prediction = target > pred
-    over_prediction = target <= pred
+    # Weight higher percentages more heavily
+    weights = 1.0 + target * 2.0  # Linear scaling with percentage
     
-    # Modified penalties with better scaling
-    under_penalty = torch.where(under_prediction,
-        relative_error * (1.0 + torch.log1p(torch.abs(target) + epsilon)),
-        torch.zeros_like(relative_error)
-    )
+    # Add L1 regularization for predictions near bounds
+    bound_penalty = torch.mean(torch.abs(pred * (1 - pred)))  # Penalize predictions near 0 or 1
     
-    # Fixed over-prediction penalty to avoid division by target
-    over_penalty = torch.where(over_prediction,
-        relative_error * (1.0 + torch.abs(pred - target) / 100.0),
-        torch.zeros_like(relative_error)
-    )
-    
-    # Combine penalties
-    combined_loss = under_penalty + over_penalty
-    
-    # Add MSE term for stability
-    mse_term = 0.1 * F.mse_loss(pred, target, reduction='none')
-    
-    # Compute final loss
-    final_loss = torch.mean(combined_loss + mse_term)
+    # Combine losses
+    final_loss = torch.mean(mse_loss * weights) + 0.1 * bound_penalty
     
     return final_loss
 

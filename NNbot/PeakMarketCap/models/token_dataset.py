@@ -85,7 +85,7 @@ class TokenDataset(Dataset):
         # Process each time window
         processed_data = {}
         
-        # Process 5s intervals
+        # Process 5s intervals for temporal data (keep this part the same)
         for window_type, windows in self.time_windows.items():
             window_data = []
             for window in windows:
@@ -96,27 +96,21 @@ class TokenDataset(Dataset):
                 window_data.append(np.stack(features, axis=1))
             processed_data[window_type] = np.stack(window_data, axis=1)
             
-        # Process global features
+        # Process global features normally
         global_data = df[self.global_features].values
         if fit:
             global_data = self.global_scaler.fit_transform(global_data)
         else:
             global_data = self.global_scaler.transform(global_data)
             
-        # Process targets - ensure targets are positive before scaling
-        target_data = np.maximum(df[self.targets].values, 0)  # Ensure no negative values
-        if fit:
-            target_data = self.target_scaler.fit_transform(target_data)
-        else:
-            target_data = self.target_scaler.transform(target_data)
-            
+        # Process targets differently - normalize to [0,1] range instead of standard scaling
+        target_data = df[self.targets].values / 200.0  # Since max percent increase is 200
+        
         return {
             'data': processed_data,
             'global': global_data,
             'targets': target_data
         }
-
-
 
     def _calculate_quality_features(self, df):
         """Calculate data quality features"""
