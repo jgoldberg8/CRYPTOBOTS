@@ -37,7 +37,8 @@ def clean_dataset(df):
     # Filter for tokens that didn't peak early and had meaningful increase
     df = df[
         (~df['hit_peak_before_30']) &  # Using ~ for boolean NOT
-        (df['percent_increase'] > 0.5)
+        (df['percent_increase'] > 0.5) &
+        (df['percent_increase'] < 200)
     ]
 
     
