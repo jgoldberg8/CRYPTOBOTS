@@ -31,7 +31,14 @@ def clean_dataset(df):
     ]
     df = df.dropna(subset=critical_cols)
     # Filter for only tokens that actually increased
-    df = df[(df['hit_peak_before_30'] == False) & (df['percent_increase'] > 0.5)]
+     if df['hit_peak_before_30'].dtype != bool:
+        df['hit_peak_before_30'] = df['hit_peak_before_30'].map({'True': True, 'False': False})
+    
+    # Filter for tokens that didn't peak early and had meaningful increase
+    df = df[
+        (~df['hit_peak_before_30']) &  # Using ~ for boolean NOT
+        (df['percent_increase'] > 0.5)
+    ]
 
     
     
