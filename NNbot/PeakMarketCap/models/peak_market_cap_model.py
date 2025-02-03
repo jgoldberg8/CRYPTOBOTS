@@ -127,6 +127,7 @@ class PeakMarketCapPredictor(nn.Module):
             nn.Dropout(self.dropout_rate),
             ResidualLinearBlock(hidden_size // 2),
             nn.Linear(hidden_size // 2, 1)
+            nn.Softplus()
         )
 
         # Initialize weights

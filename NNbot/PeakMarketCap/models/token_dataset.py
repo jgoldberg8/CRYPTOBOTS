@@ -103,8 +103,8 @@ class TokenDataset(Dataset):
         else:
             global_data = self.global_scaler.transform(global_data)
             
-        # Process targets - Fixed: Get target data first
-        target_data = df[self.targets].values
+        # Process targets - ensure targets are positive before scaling
+        target_data = np.maximum(df[self.targets].values, 0)  # Ensure no negative values
         if fit:
             target_data = self.target_scaler.fit_transform(target_data)
         else:
@@ -115,6 +115,7 @@ class TokenDataset(Dataset):
             'global': global_data,
             'targets': target_data
         }
+
 
 
     def _calculate_quality_features(self, df):
@@ -163,48 +164,37 @@ class TokenDataset(Dataset):
 
 
     def _calculate_sample_weights(self, df):
-        """Calculate sample weights to handle class imbalance"""
-        percent_increases = df['percent_increase'].values
+        """Modified sample weights calculation with better handling of edge cases"""
+        percent_increases = np.maximum(df['percent_increase'].values, 0)  # Ensure positive
         
         # Initialize weights array
         weights = np.ones_like(percent_increases, dtype=np.float32)
         
-        # Define ranges and target proportions
+        # Modified ranges with better coverage
         ranges = [
-            (0, 100),      # Low range
-            (100, 500),    # Medium range
-            (500, np.inf)  # High range
+            (0, 50),       # Very low range
+            (50, 100),     # Low range
+            (100, 150),    # Medium range
+            (150, 200)     # High range
         ]
         
-        # Count samples in each range
-        range_counts = {}
+        # Calculate weights with improved balancing
+        total_samples = len(percent_increases)
         for low, high in ranges:
             mask = (percent_increases >= low) & (percent_increases < high)
-            range_counts[(low, high)] = np.sum(mask)
-        
-        # Calculate inverse frequency weights
-        total_samples = len(percent_increases)
-        for (low, high), count in range_counts.items():
+            count = np.sum(mask)
             if count > 0:
-                mask = (percent_increases >= low) & (percent_increases < high)
-                # Weight = total_samples / (num_ranges * count)
-                weights[mask] = total_samples / (3 * count)
+                # More balanced weighting scheme
+                weights[mask] = total_samples / (len(ranges) * count)
                 
-                # Additional scaling within each range
+                # Scale weights within range based on value
                 range_values = percent_increases[mask]
                 if len(range_values) > 0:
-                    min_val = np.min(range_values)
-                    max_val = np.max(range_values)
-                    if max_val > min_val:
-                        # Scale weights within range based on value
-                        relative_pos = (range_values - min_val) / (max_val - min_val)
-                        # More weight to higher values within each range
-                        weights[mask] *= (1 + relative_pos)
+                    relative_pos = (range_values - low) / (high - low)
+                    weights[mask] *= (1 + relative_pos * 0.5)  # Reduced influence of position
         
-        # Add small constant to avoid zero weights
-        weights += 1e-5
-        
-        # Normalize weights to sum to 1
+        # Normalize weights
+        weights = np.clip(weights, 0.1, 10.0)  # Prevent extreme weights
         weights /= weights.sum()
         
         return weights

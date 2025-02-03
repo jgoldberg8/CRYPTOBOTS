@@ -159,50 +159,39 @@ def clean_dataset(df):
 
 def percentage_increase_loss(pred, target):
     """
-    Custom loss function specifically designed for percentage increase prediction:
-    1. Uses relative percentage error as base
-    2. Applies adaptive weighting based on target percentage range
-    3. Handles both under and over-prediction asymmetrically
-    
-    Args:
-        pred: Model predictions (raw output)
-        target: Actual percentage increases
+    Modified loss function with better handling of small values
     """
-    # We don't need exp/log transformations since we're dealing with percentages directly
+    # Add small epsilon to prevent division by zero
+    epsilon = 1e-6
     
-    # Calculate percentage error
-    relative_error = torch.abs(pred - target) / (torch.abs(target) + 1.0)
+    # Calculate percentage error with better numerical stability
+    relative_error = torch.abs(pred - target) / (torch.abs(target) + epsilon)
     
     # Identify under/over predictions
     under_prediction = target > pred
     over_prediction = target <= pred
     
-    # Apply asymmetric penalties
-    # Under-prediction is penalized more heavily for higher target values
+    # Modified penalties with better scaling
     under_penalty = torch.where(under_prediction,
-        relative_error * (1.0 + torch.log1p(torch.abs(target))),
+        relative_error * (1.0 + torch.log1p(torch.abs(target) + epsilon)),
         torch.zeros_like(relative_error)
     )
     
-    # Over-prediction is penalized based on the degree of over-prediction
     over_penalty = torch.where(over_prediction,
-        relative_error * (1.0 + torch.abs(pred - target) / 100.0),
+        relative_error * (1.0 + torch.abs(pred - target) / (target + epsilon)),
         torch.zeros_like(relative_error)
     )
     
-    # Combine penalties
+    # Combine penalties with stability
     combined_loss = under_penalty + over_penalty
     
-    # Add stability term for very small percentages
-    stability_term = 0.1 * torch.nn.functional.mse_loss(pred, target, reduction='none')
+    # Add L1 regularization for small predictions to discourage near-zero values
+    small_pred_penalty = 0.1 * torch.mean(torch.abs(1.0 / (pred + epsilon)))
     
-    # Weight larger percentage increases more heavily
-    weights = 1.0 + torch.log1p(torch.abs(target)) / 10.0
+    # Compute final loss with regularization
+    final_loss = torch.mean(combined_loss) + small_pred_penalty
     
-    # Compute final loss
-    final_loss = (combined_loss + stability_term) * weights
-    
-    return torch.mean(final_loss)
+    return final_loss
 
 
 class AttentionModule(nn.Module):
