@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from contextlib import nullcontext
 
-from PeakMarketCap.models.model_utilities import AttentionModule, RangeAttention, clean_dataset, custom_market_cap_loss
+from PeakMarketCap.models.model_utilities import AttentionModule, RangeAttention, RangeStratifiedBatchSampler, clean_dataset, custom_market_cap_loss
 
 from PeakMarketCap.models.token_dataset import TokenDataset
 from utils.train_val_split import train_val_split
@@ -585,13 +585,16 @@ def main():
     # Calculate sample weights for training data
     weights = train_dataset_peak._calculate_sample_weights(train_df)
    
-    sampler = WeightedRandomSampler(weights, len(weights))
+    sampler = RangeStratifiedBatchSampler(
+    train_df['percent_increase'].values,
+    batch_size=48,
+    ranges=[(0, 100), (100, 500), (500, float('inf'))]
+)
 
     # Create data loaders with weighted sampling for training
     train_loader_peak = DataLoader(
-        train_dataset_peak, 
-        batch_size=48, 
-        sampler=sampler,
+        train_dataset_peak,
+        batch_sampler=sampler,  # Use batch_sampler instead of sampler
         pin_memory=True,
         num_workers=2
     )

@@ -218,3 +218,68 @@ class RangeAttention(nn.Module):
         attention_weights = self.attention(attention_input)
         attended = torch.sum(x * attention_weights, dim=1)
         return attended
+
+
+
+
+
+class RangeStratifiedBatchSampler:
+    def __init__(self, percent_increases, batch_size, ranges=[(0, 100), (100, 500), (500, float('inf'))]):
+        self.batch_size = batch_size
+        self.ranges = ranges
+        self.indices_by_range = {}
+        
+        # Group indices by range
+        for i, val in enumerate(percent_increases):
+            for low, high in ranges:
+                if low <= val < high:
+                    if (low, high) not in self.indices_by_range:
+                        self.indices_by_range[(low, high)] = []
+                    self.indices_by_range[(low, high)].append(i)
+                    break
+        
+        # Calculate samples per range in each batch
+        total_samples = len(percent_increases)
+        self.range_proportions = {}
+        min_prop = 0.1  # Ensure at least 10% of batch for each range
+        remaining_prop = 1.0 - (min_prop * len(ranges))
+        
+        for r in ranges:
+            range_size = len(self.indices_by_range.get(r, []))
+            self.range_proportions[r] = max(
+                min_prop,
+                remaining_prop * (range_size / total_samples)
+            )
+        
+        # Normalize proportions
+        total_prop = sum(self.range_proportions.values())
+        for r in self.range_proportions:
+            self.range_proportions[r] /= total_prop
+        
+        self.samples_per_range = {
+            r: max(1, int(self.batch_size * prop))
+            for r, prop in self.range_proportions.items()
+        }
+
+    def __iter__(self):
+        while True:
+            batch_indices = []
+            
+            # Sample from each range
+            for range_key, indices in self.indices_by_range.items():
+                n_samples = self.samples_per_range[range_key]
+                if indices:  # If we have samples in this range
+                    # Sample with replacement if we need more than we have
+                    sampled_indices = np.random.choice(
+                        indices,
+                        size=n_samples,
+                        replace=len(indices) < n_samples
+                    )
+                    batch_indices.extend(sampled_indices)
+            
+            # Shuffle the batch
+            np.random.shuffle(batch_indices)
+            yield batch_indices
+            
+    def __len__(self):
+        return len(next(iter(self.indices_by_range.values()))) // self.batch_size
