@@ -164,45 +164,44 @@ class TokenDataset(Dataset):
 
 
     def _calculate_sample_weights(self, df):
-        """
-        Calculate sample weights based on percent_increase distribution
-        to handle class imbalance
-        """
+        """Calculate sample weights to handle class imbalance"""
         percent_increases = df['percent_increase'].values
         
-        # Define ranges and their target proportions
+        # Initialize weights array
+        weights = np.ones_like(percent_increases, dtype=np.float32)
+        
+        # Define ranges and target proportions
         ranges = [
-            (0, 100, 0.4),      # 40% weight for small increases
-            (100, 500, 0.3),    # 30% weight for medium increases
-            (500, np.inf, 0.3)  # 30% weight for large increases
+            (0, 100),      # Low range
+            (100, 500),    # Medium range
+            (500, np.inf)  # High range
         ]
         
-        # Initialize weights array
-        weights = np.zeros_like(percent_increases, dtype=np.float32)
+        # Count samples in each range
+        range_counts = {}
+        for low, high in ranges:
+            mask = (percent_increases >= low) & (percent_increases < high)
+            range_counts[(low, high)] = np.sum(mask)
         
-        # Calculate weights for each range
-        for min_val, max_val, target_prop in ranges:
-            mask = (percent_increases >= min_val) & (percent_increases < max_val)
-            samples_in_range = np.sum(mask)
-            
-            if samples_in_range > 0:
-                # Weight = target proportion / current proportion
-                weight_value = (target_prop * len(percent_increases)) / samples_in_range
-                weights[mask] = weight_value
-        
-        # Additional weight scaling based on value within range
-        # This gives gradually more weight to higher values within each range
-        for min_val, max_val, _ in ranges:
-            mask = (percent_increases >= min_val) & (percent_increases < max_val)
-            if np.any(mask):
+        # Calculate inverse frequency weights
+        total_samples = len(percent_increases)
+        for (low, high), count in range_counts.items():
+            if count > 0:
+                mask = (percent_increases >= low) & (percent_increases < high)
+                # Weight = total_samples / (num_ranges * count)
+                weights[mask] = total_samples / (3 * count)
+                
+                # Additional scaling within each range
                 range_values = percent_increases[mask]
-                min_range = np.min(range_values)
-                max_range = np.max(range_values)
-                if max_range > min_range:
-                    # Scale from 1 to 2 within each range
-                    scale = 1 + (percent_increases[mask] - min_range) / (max_range - min_range)
-                    weights[mask] *= scale
-
+                if len(range_values) > 0:
+                    min_val = np.min(range_values)
+                    max_val = np.max(range_values)
+                    if max_val > min_val:
+                        # Scale weights within range based on value
+                        relative_pos = (range_values - min_val) / (max_val - min_val)
+                        # More weight to higher values within each range
+                        weights[mask] *= (1 + relative_pos)
+        
         # Add small constant to avoid zero weights
         weights += 1e-5
         
@@ -210,6 +209,7 @@ class TokenDataset(Dataset):
         weights /= weights.sum()
         
         return weights
+
 
     def _calculate_feature_importance(self, df):
         """Calculate feature importance scores"""

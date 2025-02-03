@@ -601,8 +601,9 @@ def main():
 
     # Create data loaders with weighted sampling for training
     train_loader_peak = DataLoader(
-        train_dataset_peak,
-        batch_sampler=sampler,  # Use batch_sampler instead of sampler
+        train_dataset_peak, 
+        batch_size=32, 
+        sampler=sampler,
         pin_memory=True,
         num_workers=2
     )
