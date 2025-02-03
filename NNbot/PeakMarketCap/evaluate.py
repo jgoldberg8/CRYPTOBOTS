@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     """
     Evaluate percent increase prediction model showing actual percentage values.
+    Modified to work with direct percentage predictions without log transformations.
     """
     # Load and preprocess data
     dfs = []
@@ -56,7 +57,6 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     batch_size = 64
     all_predictions = []
     all_true_values = []
-    original_true_values = []  # Store original values for comparison
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
@@ -74,27 +74,20 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
                 global_features, quality_features
             )
             
-            # Prepare for inverse transform
-            pred_array = np.zeros((predictions.shape[0], 2))
-            pred_array[:, 0] = predictions.cpu().numpy().squeeze()
+            # Get predictions and targets
+            pred_array = predictions.cpu().numpy()
+            true_array = batch['targets'].cpu().numpy()
             
-            true_array = np.zeros((batch['targets'].shape[0], 2))
-            true_array[:, 0] = batch['targets'][:, 0].cpu().numpy()
-            
-            # Inverse transform predictions and targets
-            pred_unscaled = test_dataset.target_scaler.inverse_transform(pred_array)[:, 0]
-            true_unscaled = test_dataset.target_scaler.inverse_transform(true_array)[:, 0]
-            
-            # Convert from log space to original percentages
-            pred_percentages = np.expm1(pred_unscaled)
-            true_percentages = np.expm1(true_unscaled)
+            # Inverse transform predictions and targets directly
+            pred_percentages = test_dataset.target_scaler.inverse_transform(pred_array)
+            true_percentages = test_dataset.target_scaler.inverse_transform(true_array)
             
             all_predictions.append(pred_percentages)
             all_true_values.append(true_percentages)
 
     # Concatenate all predictions and true values
-    predictions = np.concatenate(all_predictions)
-    true_values = np.concatenate(all_true_values)
+    predictions = np.concatenate(all_predictions).flatten()
+    true_values = np.concatenate(all_true_values).flatten()
 
     # Calculate metrics on actual percentage values
     metrics = {
@@ -122,8 +115,9 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     plt.figure(figsize=(10, 6))
     plt.scatter(true_values, predictions, alpha=0.5, s=20)
 
-    max_val = max(true_values.max(), predictions.max())
-    min_val = min(true_values.min(), predictions.min())
+    # Set reasonable axis limits
+    max_val = min(max(true_values.max(), predictions.max()), 200)  # Cap at 200% for better visualization
+    min_val = max(min(true_values.min(), predictions.min()), 0)    # Floor at 0%
     padding = (max_val - min_val) * 0.05
     lims = [min_val - padding, max_val + padding]
 
@@ -185,7 +179,6 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
         },
         'model': peak_market_cap_model
     }
-
 if __name__ == "__main__":
     print(evaluate_peak_market_cap_model(
         'best_peak_market_cap_model.pth',
