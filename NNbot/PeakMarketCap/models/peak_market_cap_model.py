@@ -359,9 +359,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=5.0)
                     
                     scaler.step(optimizer)
-                    optimizer.step()
-                    scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
+                    scheduler.step()
                     scaler.update()
                     
                     
@@ -380,9 +379,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                 if (batch_idx + 1) % accumulation_steps == 0:
                     torch.nn.utils.clip_grad_norm_(peak_market_cap_model.parameters(), max_norm=5.0)
                     optimizer.step()
-                    scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
-                    
+                    scheduler.step()
                     
                     
                     ema.update_parameters(peak_market_cap_model)
