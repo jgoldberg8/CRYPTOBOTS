@@ -127,7 +127,7 @@ class PeakMarketCapPredictor(nn.Module):
             nn.Dropout(self.dropout_rate),
             ResidualLinearBlock(hidden_size // 2),
             nn.Linear(hidden_size // 2, 1),
-            nn.Softplus()
+            nn.ReLU()
         )
 
         # Initialize weights
@@ -486,15 +486,22 @@ def calculate_metrics(model, data_loader, device=None):
                 batch['global_features'], batch['quality_features']
             )
             
-            # Convert from log space back to original space
-            preds = torch.expm1(output).cpu().numpy()
-            targets = torch.expm1(batch['targets']).cpu().numpy()
+            # Get predictions and targets directly (no expm1 needed anymore)
+            preds = output.cpu().numpy()
+            targets = batch['targets'].cpu().numpy()
+            
+            # Inverse transform both predictions and targets
+            preds = data_loader.dataset.target_scaler.inverse_transform(preds)
+            targets = data_loader.dataset.target_scaler.inverse_transform(targets)
             
             all_preds.extend(preds)
             all_targets.extend(targets)
     
     all_preds = np.array(all_preds).flatten()
     all_targets = np.array(all_targets).flatten()
+    
+    # Ensure predictions are within reasonable bounds
+    all_preds = np.clip(all_preds, 0, 200)
     
     # Calculate various metrics
     mse = mean_squared_error(all_targets, all_preds)
@@ -525,7 +532,6 @@ def calculate_metrics(model, data_loader, device=None):
         'predictions': all_preds,
         'targets': all_targets
     }
-
 
 def save_scalers(train_dataset, output_dir='scalers'):
     """

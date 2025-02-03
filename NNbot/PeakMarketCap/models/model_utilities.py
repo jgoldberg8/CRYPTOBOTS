@@ -159,7 +159,7 @@ def clean_dataset(df):
 
 def percentage_increase_loss(pred, target):
     """
-    Modified loss function with better handling of small values
+    Fixed loss function with more stable calculations
     """
     # Add small epsilon to prevent division by zero
     epsilon = 1e-6
@@ -177,19 +177,20 @@ def percentage_increase_loss(pred, target):
         torch.zeros_like(relative_error)
     )
     
+    # Fixed over-prediction penalty to avoid division by target
     over_penalty = torch.where(over_prediction,
-        relative_error * (1.0 + torch.abs(pred - target) / (target + epsilon)),
+        relative_error * (1.0 + torch.abs(pred - target) / 100.0),
         torch.zeros_like(relative_error)
     )
     
-    # Combine penalties with stability
+    # Combine penalties
     combined_loss = under_penalty + over_penalty
     
-    # Add L1 regularization for small predictions to discourage near-zero values
-    small_pred_penalty = 0.1 * torch.mean(torch.abs(1.0 / (pred + epsilon)))
+    # Add MSE term for stability
+    mse_term = 0.1 * F.mse_loss(pred, target, reduction='none')
     
-    # Compute final loss with regularization
-    final_loss = torch.mean(combined_loss) + small_pred_penalty
+    # Compute final loss
+    final_loss = torch.mean(combined_loss + mse_term)
     
     return final_loss
 
