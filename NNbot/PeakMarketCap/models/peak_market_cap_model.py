@@ -251,14 +251,14 @@ class ResidualLinearBlock(nn.Module):
 
 def train_peak_market_cap_model(train_loader, val_loader, 
                                num_epochs=500,
-                               hidden_size=1024,
-                               num_layers=4,
-                               dropout_rate=0.4,
+                               hidden_size=512,
+                               num_layers=3,
+                               dropout_rate=0.3,
                                learning_rate=0.001,  # Increased base learning rate
                                weight_decay=1e-4,    # Increased weight decay
                                batch_size=32,        # Reduced batch size
                                accumulation_steps=4, # Increased accumulation steps
-                               patience=50,          # Increased patience
+                               patience=20,          # Increased patience
                                min_delta=1e-5):      # Reduced min delta
     """
     Enhanced training function for improved model architecture
@@ -281,6 +281,14 @@ def train_peak_market_cap_model(train_loader, val_loader,
         dropout_rate=dropout_rate
     ).to(device)
     peak_market_cap_model = peak_market_cap_model.to(memory_format=torch.channels_last)
+
+    # Explicitly flatten LSTM parameters
+    def flatten_lstm_parameters(model):
+        for name, module in model.named_modules():
+            if isinstance(module, nn.LSTM):
+                module.flatten_parameters()
+    
+    flatten_lstm_parameters(model)
 
     # Parameter groups with different learning rates
     parameter_groups = [
@@ -320,7 +328,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
     ema = torch.optim.swa_utils.AveragedModel(peak_market_cap_model, avg_fn=lambda averaged_model_parameter, model_parameter, num_averaged: 0.98 * averaged_model_parameter + 0.02 * model_parameter)
     
     # Early stopping with reduced min delta
-    early_stopping = EarlyStopping(patience=patience, min_delta=min_delta)
+    early_stopping = EarlyStopping(patience=patience, min_delta=min_delta, restore_best_weights=True)
     best_val_loss = float('inf')
     
     # Initialize AMP with improved defaults
@@ -392,6 +400,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     ema.update_parameters(peak_market_cap_model)
             
             train_loss += loss.item() * accumulation_steps
+            
             
             # Periodic status update
             if (batch_idx + 1) % (accumulation_steps * 10) == 0:
