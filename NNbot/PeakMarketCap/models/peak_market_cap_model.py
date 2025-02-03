@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from contextlib import nullcontext
 
-from PeakMarketCap.models.model_utilities import AttentionModule, RangeAttention, RangeStratifiedBatchSampler, clean_dataset, custom_market_cap_loss
+from PeakMarketCap.models.model_utilities import AttentionModule, RangeAttention, RangeStratifiedBatchSampler, clean_dataset, percentage_increase_loss
 
 from PeakMarketCap.models.token_dataset import TokenDataset
 from utils.train_val_split import train_val_split
@@ -362,7 +362,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                         batch['global_features'], batch['quality_features']
                     )
                     
-                    loss = custom_market_cap_loss(output, batch['targets'])
+                    loss = percentage_increase_loss(output, batch['targets'])
                     loss = loss / accumulation_steps
                 
                 scaler.scale(loss).backward()
@@ -386,7 +386,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     batch['global_features'], batch['quality_features']
                 )
                 
-                loss = custom_market_cap_loss(output, batch['targets'])
+                loss = percentage_increase_loss(output, batch['targets'])
                 loss = loss / accumulation_steps
                 loss.backward()
                 
