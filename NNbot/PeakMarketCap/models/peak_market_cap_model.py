@@ -593,11 +593,7 @@ def main():
     # Calculate sample weights for training data
     weights = train_dataset_peak._calculate_sample_weights(train_df)
    
-    sampler = RangeStratifiedBatchSampler(
-    train_df['percent_increase'].values,
-    batch_size=32,
-    ranges=[(0, 100), (100, 500), (500, float('inf'))]
-)
+    sampler = WeightedRandomSampler(weights, len(weights))
 
     # Create data loaders with weighted sampling for training
     train_loader_peak = DataLoader(
