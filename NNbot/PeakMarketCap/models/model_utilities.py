@@ -158,26 +158,60 @@ def clean_dataset(df):
     return df
 
 def custom_market_cap_loss(pred, target):
+    """
+    Enhanced loss function with:
+    1. Progressive weighting that scales more aggressively with higher values
+    2. Additional penalty for underestimation vs overestimation
+    3. Relative error calculation that better handles different scales
+    """
     # Convert from log space
     pred_orig = torch.expm1(pred)
     target_orig = torch.expm1(target)
     
-    # Calculate relative error
+    # Calculate relative error with asymmetric penalty
+    under_prediction = target_orig > pred_orig
     relative_error = torch.abs(pred_orig - target_orig) / (target_orig + 1)
     
-    # Add range-specific weighting
+    # Apply higher penalty for underprediction
+    relative_error = torch.where(
+        under_prediction,
+        relative_error * 1.5,  # 50% higher penalty for underprediction
+        relative_error
+    )
+    
+    # Progressive weighting based on target value
+    base_weights = torch.ones_like(target_orig)
+    
+    # Weight calculation with exponential scaling
     weights = torch.where(
-        target_orig > 500,
-        torch.ones_like(target_orig) * 3.0,  # High range
+        target_orig > 150,
+        base_weights * 8.0,  # Very high range
         torch.where(
             target_orig > 100,
-            torch.ones_like(target_orig) * 2.0,  # Medium range
-            torch.ones_like(target_orig) * 1.0  # Low range
+            base_weights * 4.0,  # High range
+            torch.where(
+                target_orig > 50,
+                base_weights * 2.0,  # Medium range
+                base_weights  # Low range
+            )
         )
     )
     
+    # Additional scaling factor based on target value
+    value_scale = (target_orig / 50).clamp(1.0, 4.0)  # Progressive scaling
+    weights = weights * value_scale
+    
+    # Compute final loss
     loss = relative_error * weights
-    return torch.mean(loss)
+    
+    # Add MSE component for stability
+    mse_component = torch.nn.functional.mse_loss(pred_orig, target_orig, reduction='none')
+    normalized_mse = mse_component / (target_orig.max() ** 2)
+    
+    final_loss = loss + 0.1 * normalized_mse  # Add small MSE component
+    
+    return torch.mean(final_loss)
+
 
 class AttentionModule(nn.Module):
     def __init__(self, hidden_size):
