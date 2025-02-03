@@ -267,6 +267,12 @@ def train_peak_market_cap_model(train_loader, val_loader,
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model
+    train_size = len(train_loader.dataset)
+    val_size = len(val_loader.dataset)
+    print("\nDataset sizes:")
+    print(f"Training samples: {train_size:,}")
+    print(f"Validation samples: {val_size:,}")
+    print(f"Total samples: {train_size + val_size:,}\n")
     input_size = 11
     peak_market_cap_model = PeakMarketCapPredictor(
         input_size=input_size,
