@@ -103,7 +103,8 @@ class TokenDataset(Dataset):
         else:
             global_data = self.global_scaler.transform(global_data)
             
-        # Process targets
+        # Process targets - Fixed: Get target data first
+        target_data = df[self.targets].values
         if fit:
             target_data = self.target_scaler.fit_transform(target_data)
         else:
@@ -114,7 +115,6 @@ class TokenDataset(Dataset):
             'global': global_data,
             'targets': target_data
         }
-        
 
 
     def _calculate_quality_features(self, df):
