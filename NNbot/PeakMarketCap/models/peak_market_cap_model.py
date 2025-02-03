@@ -288,7 +288,7 @@ def train_peak_market_cap_model(train_loader, val_loader,
             if isinstance(module, nn.LSTM):
                 module.flatten_parameters()
     
-    flatten_lstm_parameters(model)
+    flatten_lstm_parameters(peak_market_cap_model)
 
     # Parameter groups with different learning rates
     parameter_groups = [
@@ -400,6 +400,8 @@ def train_peak_market_cap_model(train_loader, val_loader,
                     ema.update_parameters(peak_market_cap_model)
             
             train_loss += loss.item() * accumulation_steps
+            if np.random.random() < 0.1:  # 10% chance each batch
+                flatten_lstm_parameters(peak_market_cap_model)
             
             
             # Periodic status update
