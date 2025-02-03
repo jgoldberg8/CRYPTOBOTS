@@ -589,7 +589,7 @@ def main():
    
     sampler = RangeStratifiedBatchSampler(
     train_df['percent_increase'].values,
-    batch_size=48,
+    batch_size=32,
     ranges=[(0, 100), (100, 500), (500, float('inf'))]
 )
 
@@ -603,7 +603,7 @@ def main():
     
     val_loader_peak = DataLoader(
         val_dataset_peak, 
-        batch_size=48,
+        batch_size=32,
         shuffle=False,
         pin_memory=True,
         num_workers=2
