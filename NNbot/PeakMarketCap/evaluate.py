@@ -39,8 +39,8 @@ def evaluate_peak_market_cap_model(peak_market_cap_model_path, data_paths):
     input_size = 11
     peak_market_cap_model = PeakMarketCapPredictor(
         input_size=input_size, 
-        hidden_size=1024, 
-        num_layers=4, 
+        hidden_size=512, 
+        num_layers=3, 
         dropout_rate=0.4
     ).to(device)
 
