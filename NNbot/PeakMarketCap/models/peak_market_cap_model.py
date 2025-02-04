@@ -125,16 +125,7 @@ class TokenPricePredictor:
         
         # Initialize and train model
         self.model = XGBRegressor(**self.xgb_params)
-        eval_set = [(X_train, y_train), (X_val, y_val)]
-        
-        self.model.fit(
-            X_train, 
-            y_train,
-            eval_set=eval_set,
-            eval_metric='rmse',
-            early_stopping_rounds=20,
-            verbose=False
-        )
+        self.model.fit(X_train, y_train)
         
         # Evaluate model
         val_predictions = self.model.predict(X_val)
