@@ -5,7 +5,8 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from peak_market_cap_model import TokenPricePredictor
+
+from PeakMarketCap.models.peak_market_cap_model import TokenPricePredictor
 
 def evaluate_token_price_model(data_paths):
     """
