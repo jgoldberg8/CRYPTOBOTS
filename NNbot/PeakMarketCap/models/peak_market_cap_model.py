@@ -45,14 +45,13 @@ class TokenPricePredictor:
         metrics = ['volume', 'rsi', 'momentum', 'buy_pressure', 'price_volatility']
         
         for metric in metrics:
-            # Calculate trend (slope) across windows
-            values = df[[f'{metric}_{window}' for window in windows]].values
-            slope = np.polyfit(range(len(windows)), values, 1)[0]
-            features[f'{metric}_trend'] = slope
-            
-            # Add acceleration (change in slope)
-            diffs = np.diff(values, axis=1)
-            features[f'{metric}_acceleration'] = np.diff(diffs, axis=1).squeeze()
+            # Calculate trend (differences between windows)
+            for i in range(len(windows)-1):
+                curr_window = windows[i]
+                next_window = windows[i+1]
+                features[f'{metric}_trend_{curr_window}'] = (
+                    df[f'{metric}_{next_window}'] - df[f'{metric}_{curr_window}']
+                )
         
         # Volume concentration features
         total_volume = df['volume_0to30s'].clip(lower=1e-8)  # Avoid division by zero
@@ -67,6 +66,14 @@ class TokenPricePredictor:
         # Transaction features
         features['avg_trade_size'] = df['volume_0to30s'] / df['transaction_count_0to30s'].clip(lower=1)
         features['wallet_to_transaction_ratio'] = df['unique_wallets_0to30s'] / df['transaction_count_0to30s'].clip(lower=1)
+        
+        # Add some ratio features
+        features['price_vol_to_volume_vol'] = (
+            df['price_volatility_0to30s'] / df['volume_volatility_0to30s'].clip(lower=1e-8)
+        )
+        features['momentum_to_volatility'] = (
+            df['momentum_0to30s'].abs() / df['price_volatility_0to30s'].clip(lower=1e-8)
+        )
         
         return features.fillna(0)  # Fill any NaN values that might have been created
     
