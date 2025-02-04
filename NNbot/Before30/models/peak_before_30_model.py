@@ -368,9 +368,11 @@ def train_hit_peak_before_30_model(train_loader, val_loader,
                 'metrics_history': metrics_history
             }, 'best_hit_peak_before_30_model.pth')
 
-        # Early stopping
-        if early_stopping(val_loss):
+        # Inside your training loop after validation
+        should_stop = early_stopping(hit_peak_before_30_model, val_loss, epoch)
+        if should_stop:
             print(f"Early stopping triggered after {epoch + 1} epochs")
+            early_stopping.restore(hit_peak_before_30_model)  # Restore best weights
             break
 
     # Load best model
