@@ -10,16 +10,15 @@ import logging
 class TokenPricePredictor:
     def __init__(self, xgb_params=None):
         self.default_xgb_params = {
-            'n_estimators': 500,
-            'max_depth': 6,
-            'learning_rate': 0.01,
-            'subsample': 0.8,
-            'colsample_bytree': 0.8,
-            'min_child_weight': 5,
+            'n_estimators': 1000,
+            'max_depth': 5,
+            'learning_rate': 0.005,
+            'subsample': 0.7,
+            'colsample_bytree': 0.7,
+            'min_child_weight': 10,
             'objective': 'reg:squarederror',
-            'random_state': 42,
-            'tree_method': 'hist',  # Faster training
-            'gamma': 1  # Minimum loss reduction for split
+            'gamma': 2,  # Increased to reduce overfitting
+            'random_state': 42
         }
         self.xgb_params = xgb_params if xgb_params else self.default_xgb_params
         self.model = None
@@ -28,7 +27,7 @@ class TokenPricePredictor:
         
     def _engineer_features(self, df):
         """Create engineered features from the raw data"""
-        features = pd.DataFrame()
+        feature_dict = {}
         
         # Base features (using 0-30s data as it's the final window)
         base_metrics = [
@@ -38,75 +37,58 @@ class TokenPricePredictor:
             'trade_concentration_0to30s', 'unique_wallets_0to30s',
             'initial_investment_ratio', 'initial_market_cap'
         ]
-        features = pd.concat([features, df[base_metrics]], axis=1)
+        for metric in base_metrics:
+            feature_dict[metric] = df[metric]
         
-        # 5-second window trends
+        # 5-second window features
         five_sec_windows = ['0to5s', '5to10s', '10to15s', '15to20s', '20to25s', '25to30s']
-        ten_sec_windows = ['0to10s', '10to20s', '20to30s']
         metrics = ['volume', 'rsi', 'momentum', 'buy_pressure', 'price_volatility', 
                 'volume_volatility', 'trade_amount_variance', 'transaction_rate']
         
-        # Calculate trends for 5s windows
+        # Compute all window-based features at once
         for metric in metrics:
-            # Rolling stats over 5s windows
-            values = [df[f'{metric}_{window}'] for window in five_sec_windows]
-            features[f'{metric}_5s_max'] = pd.concat(values, axis=1).max(axis=1)
-            features[f'{metric}_5s_min'] = pd.concat(values, axis=1).min(axis=1)
-            features[f'{metric}_5s_std'] = pd.concat(values, axis=1).std(axis=1)
+            # Get all values for this metric across windows
+            window_data = np.column_stack([df[f'{metric}_{window}'].values for window in five_sec_windows])
             
-            # Trends between consecutive 5s windows
-            for i in range(len(five_sec_windows)-1):
-                curr_window = five_sec_windows[i]
-                next_window = five_sec_windows[i+1]
-                features[f'{metric}_trend_5s_{i}'] = (
-                    df[f'{metric}_{next_window}'] - df[f'{metric}_{curr_window}']
-                )
-        
-        # Calculate trends for 10s windows
-        for metric in metrics:
-            # Rolling stats over 10s windows
-            values = [df[f'{metric}_{window}'] for window in ten_sec_windows]
-            features[f'{metric}_10s_max'] = pd.concat(values, axis=1).max(axis=1)
-            features[f'{metric}_10s_min'] = pd.concat(values, axis=1).min(axis=1)
-            features[f'{metric}_10s_std'] = pd.concat(values, axis=1).std(axis=1)
+            # Compute statistics
+            feature_dict[f'{metric}_5s_max'] = np.max(window_data, axis=1)
+            feature_dict[f'{metric}_5s_min'] = np.min(window_data, axis=1)
+            feature_dict[f'{metric}_5s_std'] = np.std(window_data, axis=1)
+            feature_dict[f'{metric}_5s_mean'] = np.mean(window_data, axis=1)
             
-            # Trends between consecutive 10s windows
-            for i in range(len(ten_sec_windows)-1):
-                curr_window = ten_sec_windows[i]
-                next_window = ten_sec_windows[i+1]
-                features[f'{metric}_trend_10s_{i}'] = (
-                    df[f'{metric}_{next_window}'] - df[f'{metric}_{curr_window}']
-                )
+            # Compute trends (differences between consecutive windows)
+            diffs = np.diff(window_data, axis=1)
+            feature_dict[f'{metric}_5s_trend_mean'] = np.mean(diffs, axis=1)
+            feature_dict[f'{metric}_5s_trend_std'] = np.std(diffs, axis=1)
+            feature_dict[f'{metric}_5s_acceleration'] = np.diff(diffs, axis=1).mean(axis=1)
+            
+            # Early vs Late period comparison
+            early_period = window_data[:, :2].mean(axis=1)
+            late_period = window_data[:, -2:].mean(axis=1)
+            feature_dict[f'{metric}_early_vs_late'] = (late_period - early_period) / np.clip(early_period, 1e-8, None)
         
-        # Volume concentration features for both window sizes
-        total_volume = df['volume_0to30s'].clip(lower=1e-8)
-        for window in five_sec_windows + ten_sec_windows:
-            features[f'volume_concentration_{window}'] = df[f'volume_{window}'] / total_volume
+        # Volume concentration features
+        total_volume = np.clip(df['volume_0to30s'].values, 1e-8, None)
+        for window in five_sec_windows:
+            feature_dict[f'volume_concentration_{window}'] = df[f'volume_{window}'].values / total_volume
         
         # Market cap features
-        initial_mcap = df['initial_market_cap'].clip(lower=1e-8)
-        features['market_cap_change'] = (df['market_cap_at_30s'] - initial_mcap) / initial_mcap
-        features['log_initial_mcap'] = np.log1p(initial_mcap)
+        initial_mcap = np.clip(df['initial_market_cap'].values, 1e-8, None)
+        feature_dict['market_cap_change'] = (df['market_cap_at_30s'].values - initial_mcap) / initial_mcap
+        feature_dict['log_initial_mcap'] = np.log1p(initial_mcap)
         
-        # Transaction patterns
-        features['avg_trade_size'] = df['volume_0to30s'] / df['transaction_count_0to30s'].clip(lower=1)
-        features['wallet_to_transaction_ratio'] = df['unique_wallets_0to30s'] / df['transaction_count_0to30s'].clip(lower=1)
+        # Transaction features
+        tx_count = np.clip(df['transaction_count_0to30s'].values, 1, None)
+        feature_dict['avg_trade_size'] = df['volume_0to30s'].values / tx_count
+        feature_dict['wallet_to_transaction_ratio'] = df['unique_wallets_0to30s'].values / tx_count
         
-        # Advanced ratio features
-        features['price_vol_to_volume_vol'] = (
-            df['price_volatility_0to30s'] / df['volume_volatility_0to30s'].clip(lower=1e-8)
-        )
-        features['momentum_to_volatility'] = (
-            df['momentum_0to30s'].abs() / df['price_volatility_0to30s'].clip(lower=1e-8)
-        )
+        # Create final DataFrame all at once
+        features = pd.DataFrame(feature_dict)
         
-        # Early vs Late period comparisons
-        for metric in metrics:
-            early_avg = df[f'{metric}_0to10s']
-            late_avg = df[f'{metric}_20to30s']
-            features[f'{metric}_early_vs_late'] = (late_avg - early_avg) / early_avg.clip(lower=1e-8)
+        # Fill any NaN values
+        features = features.fillna(0)
         
-        return features.fillna(0)
+        return features
     
     def prepare_data(self, df):
         """Prepare data for training or prediction"""
