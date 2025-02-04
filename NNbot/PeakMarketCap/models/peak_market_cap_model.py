@@ -158,7 +158,7 @@ class TokenPricePredictor:
 # Usage example:
 if __name__ == "__main__":
     # Load data
-    df = pd.read_csv('newtokendata.csv')
+    df = pd.read_csv('data/new-token-data.csv')
     
     # Initialize and train model
     predictor = TokenPricePredictor()
