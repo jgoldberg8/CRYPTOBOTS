@@ -39,8 +39,7 @@ class TokenDataCollector:
         self.logger = logging.getLogger(__name__)
 
         # Initialize data storage file
-        # self.data_file = os.path.join(log_directory, f'token_data_{datetime.now().strftime("%Y-%m-%d")}.csv')
-        self.data_file = os.path.join(log_directory, 'token-data.csv')
+        self.data_file = os.path.join(log_directory, 'new-token-data.csv')
         self._initialize_data_file()
 
         # WebSocket configuration
@@ -88,17 +87,19 @@ class TokenDataCollector:
                 for feature in base_features:
                     headers.append(f'{feature}_{interval_name}s')
 
-        # Add global features
+        # Add global features - Added market_cap_at_30s
         headers.extend([
             'initial_investment_ratio',
             'initial_market_cap',
+            'market_cap_at_30s',  # New field
             'peak_market_cap',
+            'percent_increase',
+            'percent_increase_at_30',
             'time_to_peak',
             'hit_peak_before_30'
         ])
 
         return headers
-
 
     def _initialize_token_metrics(self, token_entry: dict) -> dict:
         """Initialize metrics structure for a token"""
@@ -107,6 +108,8 @@ class TokenDataCollector:
             'first_trade_time': None,
             'initial_market_cap': None,
             'peak_market_cap': 0,
+            'percent_increase': 0,
+            'percent_increase_at_30': None,
             'peak_time': None,
             'transactions': [],
             'timeframe_metrics': defaultdict(lambda: {
@@ -154,7 +157,7 @@ class TokenDataCollector:
         
         # Filter transactions within this specific interval
         window_txs = [tx for tx in token['transactions'] 
-                    if isinstance(tx['timestamp'], datetime) and  # Ensure timestamp is datetime
+                    if isinstance(tx['timestamp'], datetime) and
                     interval_start <= tx['timestamp'] <= interval_end]
 
         if not window_txs:
@@ -255,11 +258,14 @@ class TokenDataCollector:
             time_to_peak = (token['peak_time'] - token['first_trade_time']).total_seconds() \
                 if token.get('peak_time') and token.get('first_trade_time') else 0
             
-            # Add global metrics with defaults if missing
+            # Add global metrics with defaults if missing - Added market_cap_at_30s
             data.update({
                 'initial_investment_ratio': token.get('initial_investment_ratio', 1.0),
                 'initial_market_cap': token.get('initial_market_cap', 0),
+                'market_cap_at_30s': token.get('market_cap_at_30s', 0),  # New field
                 'peak_market_cap': token.get('peak_market_cap', 0),
+                'percent_increase': token.get('percent_increase', 0),
+                'percent_increase_at_30': token.get('percent_increase_at_30', 0),
                 'time_to_peak': time_to_peak,
                 'hit_peak_before_30': time_to_peak <= 30
             })
@@ -283,8 +289,11 @@ class TokenDataCollector:
                 'creation_time': datetime.now(),
                 'first_trade_time': None,
                 'initial_market_cap': None,
+                'market_cap_at_30s': None,  # New field
                 'initial_investment_ratio': None,
                 'peak_market_cap': 0,
+                'percent_increase': 0,
+                'percent_increase_at_30': None,
                 'peak_time': None,
                 'transactions': [],
                 'recorded': False
@@ -321,25 +330,39 @@ class TokenDataCollector:
 
             # Store transaction with datetime object
             token['transactions'].append({
-                'timestamp': current_time,  # Ensure this is a datetime object
+                'timestamp': current_time,
                 **transaction
             })
 
-            # Update peak market cap (only within first 3 minutes)
+            # Get time since first trade
             first_trade_time = token['first_trade_time']
             if isinstance(first_trade_time, str):
                 first_trade_time = datetime.fromisoformat(first_trade_time.replace('Z', '+00:00'))
                 token['first_trade_time'] = first_trade_time
                 
             time_since_first = (current_time - first_trade_time).total_seconds()
-            
-            if time_since_first <= 3060 and transaction['marketCapSol'] > token['peak_market_cap']:
-                token['peak_market_cap'] = transaction['marketCapSol']
-                token['peak_time'] = current_time
+
+            # Record market cap at 30 seconds if we haven't yet and we're past 30 seconds
+            if time_since_first >= 30 and token.get('market_cap_at_30s') is None:
+                token['market_cap_at_30s'] = transaction['marketCapSol']
+                # Also record the initial 30-second increase
+                token['percent_increase_at_30'] = ((transaction['marketCapSol'] - token['initial_market_cap']) / 
+                                                token['initial_market_cap'] * 100)
+
+            # Update peak market cap and percent increase (only within first 3 minutes)
+            if time_since_first <= 3060:
+                if transaction['marketCapSol'] > token['peak_market_cap']:
+                    token['peak_market_cap'] = transaction['marketCapSol']
+                    token['peak_time'] = current_time
+                    
+                    # Calculate percent increase from 30-second mark if available
+                    if token.get('market_cap_at_30s') is not None:
+                        token['percent_increase'] = ((transaction['marketCapSol'] - token['market_cap_at_30s']) / 
+                                                token['market_cap_at_30s'] * 100)
 
             # Check if we should record the data
             if not token.get('completed', False):
-              self._check_record_completion(token)
+                self._check_record_completion(token)
 
         except Exception as e:
             self.logger.error(f"Error handling transaction: {e}")
