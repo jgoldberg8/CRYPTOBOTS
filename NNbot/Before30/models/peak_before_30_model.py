@@ -471,7 +471,7 @@ def main_hit_peak_before_30(
     train_loader = torch.utils.data.DataLoader(
         train_dataset, 
         batch_size=batch_size, 
-        shuffle=True
+        shuffle=True,
         drop_last=True
     )
     val_loader = torch.utils.data.DataLoader(
