@@ -160,15 +160,26 @@ class TokenPricePredictor:
         if self.model is None:
             raise ValueError("Model needs to be trained first")
         
-        # Prepare data
-        X, _ = self.prepare_data(df)
-        
-        # Make predictions
-        predictions = self.model.predict(X)
-        
-        # Add predictions to dataframe
+        # Create a copy of the dataframe
         df_with_predictions = df.copy()
-        df_with_predictions['predicted_percent_increase'] = predictions
+        
+        # Initialize predictions column with zeros
+        df_with_predictions['predicted_percent_increase'] = 0.0
+        
+        # Get mask for valid prediction rows (same as training filter)
+        prediction_mask = (
+            df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false"
+        )
+        
+        if prediction_mask.any():
+            # Prepare data only for rows meeting the criteria
+            X, _ = self.prepare_data(df_with_predictions[prediction_mask])
+            
+            # Make predictions for filtered rows
+            predictions = self.model.predict(X)
+            
+            # Assign predictions only to the relevant rows
+            df_with_predictions.loc[prediction_mask, 'predicted_percent_increase'] = predictions
         
         return df_with_predictions
 
