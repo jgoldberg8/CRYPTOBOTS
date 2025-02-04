@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from xgboost import XGBRegressor
+import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -127,8 +128,13 @@ class TokenPricePredictor:
         self.model.fit(
             X_train, y_train,
             eval_set=[(X_val, y_val)],
-            early_stopping_rounds=20,
-            verbose=False
+            verbose=False,
+            callbacks=[
+                xgb.callback.EarlyStopping(
+                    rounds=20,
+                    save_best=True
+                )
+            ]
         )
         
         # Evaluate model
