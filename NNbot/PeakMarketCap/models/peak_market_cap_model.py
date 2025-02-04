@@ -106,12 +106,11 @@ class TokenPricePredictor:
         if 'percent_increase' in df.columns:  # Training mode
             self.scaler.fit(features)
         
-        scaled_features = pd.DataFrame(
-            self.scaler.transform(features),
-            columns=features.columns
-        )
+        # Convert to numpy arrays for XGBoost
+        X = self.scaler.transform(features)
+        y = df['percent_increase'].values if 'percent_increase' in df.columns else None
         
-        return scaled_features, df['percent_increase'] if 'percent_increase' in df.columns else None
+        return X, y
             
     def train(self, df):
         """Train the model"""
