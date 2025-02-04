@@ -76,64 +76,64 @@ class TokenPricePredictor:
         
         return features
     
-def prepare_data(self, df):
-    """Prepare data for training or prediction"""
-    # Debug: Print initial dataframe info
-    print(f"Initial dataframe size: {df.shape}")
-    print("\nUnique values in hit_peak_before_30:")
-    print(df['hit_peak_before_30'].value_counts())
-    print("\nPercent_increase statistics:")
-    print(df['percent_increase'].describe())
-    
-    # Print sample of data before filtering
-    print("\nSample of data before filtering:")
-    print(df[['hit_peak_before_30', 'percent_increase']].head())
-    
-    # Filter for tokens that haven't peaked before 30s and have positive increase
-    if 'percent_increase' in df.columns:  # Training mode
-        df_filtered = df[
-            (df['hit_peak_before_30'] == "False") & 
-            (df['percent_increase'] > 0)
-        ].copy()
+    def prepare_data(self, df):
+        """Prepare data for training or prediction"""
+        # Debug: Print initial dataframe info
+        print(f"Initial dataframe size: {df.shape}")
+        print("\nUnique values in hit_peak_before_30:")
+        print(df['hit_peak_before_30'].value_counts())
+        print("\nPercent_increase statistics:")
+        print(df['percent_increase'].describe())
         
-        print(f"\nAfter filtering:")
-        print(f"Rows remaining: {len(df_filtered)}")
-        if len(df_filtered) > 0:
-            print("\nSample of filtered data:")
-            print(df_filtered[['hit_peak_before_30', 'percent_increase']].head())
+        # Print sample of data before filtering
+        print("\nSample of data before filtering:")
+        print(df[['hit_peak_before_30', 'percent_increase']].head())
         
-        # Debugging each condition separately
-        condition1 = df['hit_peak_before_30'] == "False"
-        condition2 = df['percent_increase'] > 0
-        
-        print(f"\nCondition breakdowns:")
-        print(f"Rows where hit_peak_before_30 is 'False': {condition1.sum()}")
-        print(f"Rows where percent_increase > 0: {condition2.sum()}")
-        print(f"Rows meeting both conditions: {(condition1 & condition2).sum()}")
-        
-        if len(df_filtered) == 0:
-            raise ValueError("No samples left after filtering. Check data conditions above.")
+        # Filter for tokens that haven't peaked before 30s and have positive increase
+        if 'percent_increase' in df.columns:  # Training mode
+            df_filtered = df[
+                (df['hit_peak_before_30'] == "False") & 
+                (df['percent_increase'] > 0)
+            ].copy()
             
-        df = df_filtered
-    
-    # Engineer features
-    features = self._engineer_features(df)
-    
-    # Store feature columns for prediction
-    if self.feature_columns is None:
-        self.feature_columns = features.columns.tolist()
-    
-    # Scale features
-    if 'percent_increase' in df.columns:  # Training mode
-        self.scaler.fit(features)
-    
-    scaled_features = pd.DataFrame(
-        self.scaler.transform(features),
-        columns=features.columns
-    )
-    
-    return scaled_features, df['percent_increase'] if 'percent_increase' in df.columns else None
+            print(f"\nAfter filtering:")
+            print(f"Rows remaining: {len(df_filtered)}")
+            if len(df_filtered) > 0:
+                print("\nSample of filtered data:")
+                print(df_filtered[['hit_peak_before_30', 'percent_increase']].head())
+            
+            # Debugging each condition separately
+            condition1 = df['hit_peak_before_30'] == "False"
+            condition2 = df['percent_increase'] > 0
+            
+            print(f"\nCondition breakdowns:")
+            print(f"Rows where hit_peak_before_30 is 'False': {condition1.sum()}")
+            print(f"Rows where percent_increase > 0: {condition2.sum()}")
+            print(f"Rows meeting both conditions: {(condition1 & condition2).sum()}")
+            
+            if len(df_filtered) == 0:
+                raise ValueError("No samples left after filtering. Check data conditions above.")
+                
+            df = df_filtered
         
+        # Engineer features
+        features = self._engineer_features(df)
+        
+        # Store feature columns for prediction
+        if self.feature_columns is None:
+            self.feature_columns = features.columns.tolist()
+        
+        # Scale features
+        if 'percent_increase' in df.columns:  # Training mode
+            self.scaler.fit(features)
+        
+        scaled_features = pd.DataFrame(
+            self.scaler.transform(features),
+            columns=features.columns
+        )
+        
+        return scaled_features, df['percent_increase'] if 'percent_increase' in df.columns else None
+            
     def train(self, df):
         """Train the model"""
         # Prepare data
