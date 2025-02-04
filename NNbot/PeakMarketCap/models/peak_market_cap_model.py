@@ -174,6 +174,9 @@ class TokenPricePredictor:
         pred_mask = (df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false")
         
         if pred_mask.any():
+            # Get indices where pred_mask is True
+            pred_indices = df_with_predictions.index[pred_mask]
+            
             # Prepare data only for valid prediction rows
             pred_df = df_with_predictions[pred_mask].copy()
             X, _ = self.prepare_data(pred_df)
@@ -182,11 +185,11 @@ class TokenPricePredictor:
             log_predictions = self.model.predict(X)
             predictions = np.expm1(log_predictions)
             
-            # Update predictions in the original dataframe
-            df_with_predictions.loc[pred_mask, 'predicted_percent_increase'] = predictions
+            # Update predictions one at a time using loc
+            for idx, pred in zip(pred_indices, predictions):
+                df_with_predictions.at[idx, 'predicted_percent_increase'] = pred
         
         return df_with_predictions
-
 # Usage example:
 if __name__ == "__main__":
     # Load data
