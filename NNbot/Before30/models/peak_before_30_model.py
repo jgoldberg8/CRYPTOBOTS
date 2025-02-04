@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 import warnings
 import joblib
@@ -177,7 +178,15 @@ class HitPeakBefore30Predictor(nn.Module):
         
         return binary_output
 
-
+@contextmanager
+def suppress_lstm_warnings():
+    """Context manager to suppress LSTM parameter warnings"""
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 
+                              message='RNN module weights are not part of single contiguous chunk of memory', 
+                              category=UserWarning)
+        yield
+        
 def train_hit_peak_before_30_model(train_loader, val_loader, 
                                 num_epochs=200, learning_rate=0.0003775949513157161, weight_decay=0.01, 
                                 patience=15, min_delta=0.001, hidden_size=256, num_layers=3, dropout_rate=0.5):
@@ -432,7 +441,7 @@ def main_hit_peak_before_30(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Load and preprocess data
-    df = pd.read_csv('data/token-data.csv')
+    df = pd.read_csv('data/new-token-data.csv')
     
     # Ensure hit_peak_before_30 column exists
     if 'hit_peak_before_30' not in df.columns:
