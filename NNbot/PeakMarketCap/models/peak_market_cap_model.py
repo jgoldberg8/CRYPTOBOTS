@@ -10,15 +10,17 @@ import logging
 class TokenPricePredictor:
     def __init__(self, xgb_params=None):
         self.default_xgb_params = {
-            'n_estimators': 1000,
-            'max_depth': 5,
-            'learning_rate': 0.005,
-            'subsample': 0.7,
-            'colsample_bytree': 0.7,
-            'min_child_weight': 10,
+            'n_estimators': 2000,
+            'max_depth': 6,
+            'learning_rate': 0.01,
+            'subsample': 0.6,
+            'colsample_bytree': 0.6,
+            'min_child_weight': 5,
             'objective': 'reg:squarederror',
-            'gamma': 2,  # Increased to reduce overfitting
-            'random_state': 42
+            'tree_method': 'hist',
+            'gamma': 1,
+            'random_state': 42,
+            'max_leaves': 32
         }
         self.xgb_params = xgb_params if xgb_params else self.default_xgb_params
         self.model = None
@@ -96,17 +98,20 @@ class TokenPricePredictor:
         df = df.copy()
         df['hit_peak_before_30'] = df['hit_peak_before_30'].astype(str)
         
-        # Filter for tokens that haven't peaked before 30s and have positive increase
+        # Only filter in training mode
         if 'percent_increase' in df.columns:  # Training mode
-            df_filtered = df[
+            # Filter for valid training samples
+            valid_mask = (
                 (df['hit_peak_before_30'].str.lower() == "false") & 
                 (df['percent_increase'] > 0)
-            ].copy()
+            )
+            df = df[valid_mask].copy()
             
-            if len(df_filtered) == 0:
+            if len(df) == 0:
                 raise ValueError("No samples left after filtering. Check data types and values.")
-                
-            df = df_filtered
+            
+            # Log transform the target for better handling of large values
+            df['log_percent_increase'] = np.log1p(df['percent_increase'])
         
         # Engineer features
         features = self._engineer_features(df)
@@ -119,9 +124,8 @@ class TokenPricePredictor:
         if 'percent_increase' in df.columns:  # Training mode
             self.scaler.fit(features)
         
-        # Convert to numpy arrays for XGBoost
         X = self.scaler.transform(features)
-        y = df['percent_increase'].values if 'percent_increase' in df.columns else None
+        y = df['log_percent_increase'].values if 'percent_increase' in df.columns else None
         
         return X, y
             
@@ -166,19 +170,20 @@ class TokenPricePredictor:
         # Initialize predictions column with zeros
         df_with_predictions['predicted_percent_increase'] = 0.0
         
-        # Filter the dataframe for prediction
-        filtered_df = df_with_predictions[
-            df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false"
-        ].copy()
+        # Only predict for tokens that haven't peaked before 30s
+        pred_mask = (df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false")
         
-        if not filtered_df.empty:
-            # Prepare data and make predictions
-            X, _ = self.prepare_data(filtered_df)
-            predictions = self.model.predict(X)
+        if pred_mask.any():
+            # Prepare data only for valid prediction rows
+            pred_df = df_with_predictions[pred_mask].copy()
+            X, _ = self.prepare_data(pred_df)
+            
+            # Make predictions and inverse transform from log scale
+            log_predictions = self.model.predict(X)
+            predictions = np.expm1(log_predictions)
             
             # Update predictions in the original dataframe
-            for idx, pred in zip(filtered_df.index, predictions):
-                df_with_predictions.at[idx, 'predicted_percent_increase'] = pred
+            df_with_predictions.loc[pred_mask, 'predicted_percent_increase'] = predictions
         
         return df_with_predictions
 
