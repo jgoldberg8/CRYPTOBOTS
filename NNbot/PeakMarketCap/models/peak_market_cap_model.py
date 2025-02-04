@@ -148,7 +148,7 @@ class TokenPricePredictor:
         # Create a copy of the dataframe
         df_with_predictions = df.copy()
         
-        # Initialize predictions columns
+        # Initialize predictions columns with default values
         df_with_predictions['predicted_category'] = -1
         for i in range(len(self.ranges)):
             df_with_predictions[f'probability_range_{i}'] = 0.0
@@ -157,20 +157,20 @@ class TokenPricePredictor:
         pred_mask = (df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false")
         
         if pred_mask.any():
-            # Get indices where pred_mask is True
-            pred_indices = df_with_predictions.index[pred_mask]
-            
-            # Prepare data only for valid prediction rows
-            pred_df = df_with_predictions[pred_mask].copy()
-            X, _ = self.prepare_data(pred_df)
+            # Get prediction data
+            X, _ = self.prepare_data(df_with_predictions[pred_mask])
             
             # Make predictions
             predictions = self.model.predict(X)
             probabilities = self.model.predict_proba(X)
             
-            # Update predictions
-            df_with_predictions.loc[pred_mask, 'predicted_category'] = predictions
-            for i in range(len(self.ranges)):
-                df_with_predictions.loc[pred_mask, f'probability_range_{i}'] = probabilities[:, i]
+            # Get indices of rows that need predictions
+            pred_indices = df_with_predictions.index[pred_mask].tolist()
+            
+            # Update predictions one at a time
+            for idx, pred, probs in zip(pred_indices, predictions, probabilities):
+                df_with_predictions.at[idx, 'predicted_category'] = pred
+                for i in range(len(self.ranges)):
+                    df_with_predictions.at[idx, f'probability_range_{i}'] = probs[i]
         
         return df_with_predictions
