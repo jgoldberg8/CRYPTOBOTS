@@ -78,12 +78,26 @@ class TokenPricePredictor:
     
     def prepare_data(self, df):
         """Prepare data for training or prediction"""
+        # Debug: Print initial dataframe size
+        print(f"Initial dataframe size: {df.shape}")
+        
         # Filter for tokens that haven't peaked before 30s and have positive increase
         if 'percent_increase' in df.columns:  # Training mode
+            # Debug: Print number of rows matching each condition
+            print(f"Rows where hit_peak_before_30 is False: {df['hit_peak_before_30'].value_counts().get('False', 0)}")
+            print(f"Rows with positive percent_increase: {(df['percent_increase'] > 0).sum()}")
+            
             df = df[
                 (df['hit_peak_before_30'] == "False") & 
                 (df['percent_increase'] > 0)
             ].copy()
+            
+            # Debug: Print filtered dataframe size
+            print(f"Filtered dataframe size: {df.shape}")
+            
+            # Check if we have any data after filtering
+            if df.empty:
+                raise ValueError("No samples left after filtering. Check your data and filter conditions.")
         
         # Engineer features
         features = self._engineer_features(df)
@@ -102,7 +116,7 @@ class TokenPricePredictor:
         )
         
         return scaled_features, df['percent_increase'] if 'percent_increase' in df.columns else None
-    
+        
     def train(self, df):
         """Train the model"""
         # Prepare data
