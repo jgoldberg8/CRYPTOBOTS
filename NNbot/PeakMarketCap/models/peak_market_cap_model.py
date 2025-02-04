@@ -1,32 +1,43 @@
 import pandas as pd
 import numpy as np
-from xgboost import XGBRegressor
-import xgboost as xgb
-from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import logging
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 class TokenPricePredictor:
     def __init__(self, xgb_params=None):
         self.default_xgb_params = {
-            'n_estimators': 2000,
+            'n_estimators': 1000,
             'max_depth': 6,
             'learning_rate': 0.01,
-            'subsample': 0.6,
-            'colsample_bytree': 0.6,
+            'subsample': 0.7,
+            'colsample_bytree': 0.7,
             'min_child_weight': 5,
-            'objective': 'reg:squarederror',
+            'objective': 'multi:softprob',  # Changed for multiclass
+            'num_class': 4,  # Number of classes
             'tree_method': 'hist',
-            'gamma': 1,
-            'random_state': 42,
-            'max_leaves': 32
+            'random_state': 42
         }
         self.xgb_params = xgb_params if xgb_params else self.default_xgb_params
         self.model = None
         self.scaler = StandardScaler()
         self.feature_columns = None
         
+        # Define increase ranges
+        self.ranges = [
+            (0, 50),      # Low increase
+            (50, 150),    # Medium increase
+            (150, 300),   # High increase
+            (300, float('inf'))  # Very high increase
+        ]
+    
+    def _get_increase_category(self, percent_increase):
+        """Convert percent increase to category"""
+        for i, (low, high) in enumerate(self.ranges):
+            if low <= percent_increase < high:
+                return i
+        return len(self.ranges) - 1  # Return last category if above all ranges
+    
     def _engineer_features(self, df):
         """Create engineered features from the raw data"""
         feature_dict = {}
@@ -45,9 +56,9 @@ class TokenPricePredictor:
         # 5-second window features
         five_sec_windows = ['0to5s', '5to10s', '10to15s', '15to20s', '20to25s', '25to30s']
         metrics = ['volume', 'rsi', 'momentum', 'buy_pressure', 'price_volatility', 
-                'volume_volatility', 'trade_amount_variance', 'transaction_rate']
+                  'volume_volatility', 'trade_amount_variance', 'transaction_rate']
         
-        # Compute all window-based features at once
+        # Compute all window-based features
         for metric in metrics:
             # Get all values for this metric across windows
             window_data = np.column_stack([df[f'{metric}_{window}'].values for window in five_sec_windows])
@@ -58,39 +69,14 @@ class TokenPricePredictor:
             feature_dict[f'{metric}_5s_std'] = np.std(window_data, axis=1)
             feature_dict[f'{metric}_5s_mean'] = np.mean(window_data, axis=1)
             
-            # Compute trends (differences between consecutive windows)
-            diffs = np.diff(window_data, axis=1)
-            feature_dict[f'{metric}_5s_trend_mean'] = np.mean(diffs, axis=1)
-            feature_dict[f'{metric}_5s_trend_std'] = np.std(diffs, axis=1)
-            feature_dict[f'{metric}_5s_acceleration'] = np.diff(diffs, axis=1).mean(axis=1)
-            
             # Early vs Late period comparison
             early_period = window_data[:, :2].mean(axis=1)
             late_period = window_data[:, -2:].mean(axis=1)
             feature_dict[f'{metric}_early_vs_late'] = (late_period - early_period) / np.clip(early_period, 1e-8, None)
         
-        # Volume concentration features
-        total_volume = np.clip(df['volume_0to30s'].values, 1e-8, None)
-        for window in five_sec_windows:
-            feature_dict[f'volume_concentration_{window}'] = df[f'volume_{window}'].values / total_volume
-        
-        # Market cap features
-        initial_mcap = np.clip(df['initial_market_cap'].values, 1e-8, None)
-        feature_dict['market_cap_change'] = (df['market_cap_at_30s'].values - initial_mcap) / initial_mcap
-        feature_dict['log_initial_mcap'] = np.log1p(initial_mcap)
-        
-        # Transaction features
-        tx_count = np.clip(df['transaction_count_0to30s'].values, 1, None)
-        feature_dict['avg_trade_size'] = df['volume_0to30s'].values / tx_count
-        feature_dict['wallet_to_transaction_ratio'] = df['unique_wallets_0to30s'].values / tx_count
-        
         # Create final DataFrame all at once
         features = pd.DataFrame(feature_dict)
-        
-        # Fill any NaN values
-        features = features.fillna(0)
-        
-        return features
+        return features.fillna(0)
     
     def prepare_data(self, df):
         """Prepare data for training or prediction"""
@@ -98,20 +84,20 @@ class TokenPricePredictor:
         df = df.copy()
         df['hit_peak_before_30'] = df['hit_peak_before_30'].astype(str)
         
-        # Only filter in training mode
+        # Filter for valid training samples
         if 'percent_increase' in df.columns:  # Training mode
-            # Filter for valid training samples
-            valid_mask = (
+            df = df[
                 (df['hit_peak_before_30'].str.lower() == "false") & 
                 (df['percent_increase'] > 0)
-            )
-            df = df[valid_mask].copy()
+            ].copy()
             
             if len(df) == 0:
                 raise ValueError("No samples left after filtering. Check data types and values.")
             
-            # Log transform the target for better handling of large values
-            df['log_percent_increase'] = np.log1p(df['percent_increase'])
+            # Convert percent_increase to categories
+            y = np.array([self._get_increase_category(val) for val in df['percent_increase']])
+        else:
+            y = None
         
         # Engineer features
         features = self._engineer_features(df)
@@ -125,30 +111,25 @@ class TokenPricePredictor:
             self.scaler.fit(features)
         
         X = self.scaler.transform(features)
-        y = df['log_percent_increase'].values if 'percent_increase' in df.columns else None
-        
         return X, y
-            
+    
     def train(self, df):
         """Train the model"""
         # Prepare data
         X, y = self.prepare_data(df)
         
-        # Split data
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        
         # Initialize and train model
-        self.model = XGBRegressor(**self.xgb_params)
-        self.model.fit(X_train, y_train)
+        self.model = XGBClassifier(**self.xgb_params)
+        self.model.fit(X, y)
         
-        # Evaluate model
-        val_predictions = self.model.predict(X_val)
+        # Make predictions on training data
+        train_pred = self.model.predict(X)
+        train_pred_proba = self.model.predict_proba(X)
+        
+        # Calculate metrics
         metrics = {
-            'rmse': np.sqrt(mean_squared_error(y_val, val_predictions)),
-            'mae': mean_absolute_error(y_val, val_predictions),
-            'r2': r2_score(y_val, val_predictions)
+            'accuracy': accuracy_score(y, train_pred),
+            'classification_report': classification_report(y, train_pred, output_dict=True)
         }
         
         # Get feature importance
@@ -167,8 +148,10 @@ class TokenPricePredictor:
         # Create a copy of the dataframe
         df_with_predictions = df.copy()
         
-        # Initialize predictions column with zeros
-        df_with_predictions['predicted_percent_increase'] = 0.0
+        # Initialize predictions columns
+        df_with_predictions['predicted_category'] = -1
+        for i in range(len(self.ranges)):
+            df_with_predictions[f'probability_range_{i}'] = 0.0
         
         # Only predict for tokens that haven't peaked before 30s
         pred_mask = (df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false")
@@ -181,28 +164,13 @@ class TokenPricePredictor:
             pred_df = df_with_predictions[pred_mask].copy()
             X, _ = self.prepare_data(pred_df)
             
-            # Make predictions and inverse transform from log scale
-            log_predictions = self.model.predict(X)
-            predictions = np.expm1(log_predictions)
+            # Make predictions
+            predictions = self.model.predict(X)
+            probabilities = self.model.predict_proba(X)
             
-            # Update predictions one at a time using loc
-            for idx, pred in zip(pred_indices, predictions):
-                df_with_predictions.at[idx, 'predicted_percent_increase'] = pred
+            # Update predictions
+            df_with_predictions.loc[pred_mask, 'predicted_category'] = predictions
+            for i in range(len(self.ranges)):
+                df_with_predictions.loc[pred_mask, f'probability_range_{i}'] = probabilities[:, i]
         
         return df_with_predictions
-# Usage example:
-if __name__ == "__main__":
-    # Load data
-    df = pd.read_csv('data/new-token-data.csv')
-    
-    # Initialize and train model
-    predictor = TokenPricePredictor()
-    metrics, importance = predictor.train(df)
-    
-    # Print results
-    print("\nModel Performance Metrics:")
-    for metric, value in metrics.items():
-        print(f"{metric}: {value:.4f}")
-    
-    print("\nTop 10 Most Important Features:")
-    print(importance.head(10))
