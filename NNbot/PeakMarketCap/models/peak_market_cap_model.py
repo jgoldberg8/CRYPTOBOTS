@@ -166,20 +166,19 @@ class TokenPricePredictor:
         # Initialize predictions column with zeros
         df_with_predictions['predicted_percent_increase'] = 0.0
         
-        # Get mask for valid prediction rows (same as training filter)
-        prediction_mask = (
+        # Filter the dataframe for prediction
+        filtered_df = df_with_predictions[
             df_with_predictions['hit_peak_before_30'].astype(str).str.lower() == "false"
-        )
+        ].copy()
         
-        if prediction_mask.any():
-            # Prepare data only for rows meeting the criteria
-            X, _ = self.prepare_data(df_with_predictions[prediction_mask])
-            
-            # Make predictions for filtered rows
+        if not filtered_df.empty:
+            # Prepare data and make predictions
+            X, _ = self.prepare_data(filtered_df)
             predictions = self.model.predict(X)
             
-            # Assign predictions only to the relevant rows
-            df_with_predictions.loc[prediction_mask, 'predicted_percent_increase'] = predictions
+            # Update predictions in the original dataframe
+            for idx, pred in zip(filtered_df.index, predictions):
+                df_with_predictions.at[idx, 'predicted_percent_increase'] = pred
         
         return df_with_predictions
 
